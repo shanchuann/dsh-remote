@@ -75,7 +75,7 @@
 
 <table>
 <tr>
-<td><img src="docs/verification/screenshots/black-03-connect-final.png" alt="连接页" /></td>
+<td><img src="docs/verification/screenshots/centered-02-connect.png" alt="连接页" /></td>
 <td><img src="docs/verification/screenshots/32-keyboard.png" alt="键盘上方输入" /></td>
 <td><img src="docs/verification/screenshots/36-progress.png" alt="流式与工具卡" /></td>
 </tr>
