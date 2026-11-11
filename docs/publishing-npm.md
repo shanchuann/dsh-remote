@@ -26,7 +26,7 @@ npm publish --access public
 
 仓库已带 [`.github/workflows/publish-npm.yml`](../.github/workflows/publish-npm.yml)：
 
-1. 在 GitHub 仓库 **Settings → Secrets and variables → Actions** 添加 `NPM_TOKEN`（npm 的 Automation token，类型选 *Automation*，绕过 2FA）；
+1. 在 npm 包 `dsh-remote-harness` 的 **Trusted publishers** 里添加 GitHub 仓库 `shanchuann/dsh-remote-`（工作流文件：`.github/workflows/publish-npm.yml`）；
 2. 打 tag 触发：
 
 ```bash

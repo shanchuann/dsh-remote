@@ -16,12 +16,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          registry-url: https://registry.npmjs.org
       - name: Test
         working-directory: plugin
         run: node test/run-all.mjs
       - name: Publish
         working-directory: plugin
         run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
