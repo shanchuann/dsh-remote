@@ -2,7 +2,7 @@
   "expo": {
     "name": "DSH Remote",
     "slug": "dsh-remote",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "scheme": "dshremote",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -20,7 +20,7 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "monochromeImage": "./assets/images/adaptive-icon-monochrome.png",
-        "backgroundColor": "#4D6BFE"
+        "backgroundColor": "#FFFFFF"
       },
       "predictiveBackGestureEnabled": false
     },

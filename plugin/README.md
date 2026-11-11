@@ -9,7 +9,7 @@ A paired Android phone gets the session list, live streaming chat, tool calls, a
 - **Security-first pairing** — one-time 6-digit code (10 min TTL, rotates on success), device tokens stored as SHA-256, revocable per device.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/shanchuann/dsh-remote-/main/docs/verification/screenshots/brand-05-connect-form.png" width="260" alt="会话列表" />
+  <img src="https://raw.githubusercontent.com/shanchuann/dsh-remote-/main/docs/verification/screenshots/black-01-connect.png" width="260" alt="会话列表" />
   <img src="https://raw.githubusercontent.com/shanchuann/dsh-remote-/main/docs/verification/screenshots/36-progress.png" width="260" alt="流式与工具卡" />
 </p>
 
