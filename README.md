@@ -271,6 +271,7 @@ node tools/verify/protocol-client.mjs --url http://127.0.0.1:8790 --code 123456 
 - [docs/architecture.md](docs/architecture.md) — 系统设计
 - [docs/build-android.md](docs/build-android.md) — 构建 APK（含 Windows 坑）
 - [docs/app-architecture.md](docs/app-architecture.md) — App 模块边界与 store 契约
+- [docs/publishing-npm.md](docs/publishing-npm.md) — 发布 `dsh-remote-harness` 到 npm（含 Actions）
 - [docs/verification/README.md](docs/verification/README.md) — 验证索引
 
 ## License
