@@ -2,7 +2,12 @@
 
 <div align="center">
 
-<img src="app/assets/images/icon.png" width="112" alt="DSH Remote" />
+<img src="app/assets/images/icon.png" width="96" alt="DSH Remote" />
+<br/>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="app/assets/images/deepseek-wordmark-white.png" />
+  <img src="app/assets/images/deepseek-wordmark.png" width="240" alt="DeepSeek" />
+</picture>
 
 **用手机继续电脑上的 DeepSeek Harness 会话 —— 局域网直连，不经过云端。**
 
@@ -24,7 +29,7 @@
 | 组件 | 说明 |
 |---|---|
 | **Host 插件**（[`plugin/`](plugin/)） | 跑在 DeepSeek Harness 进程内，暴露局域网 HTTP + SSE；调用 DSH 的 `sessionController`，转发会话、流式输出、工具调用、审批与模型选择。**零运行时依赖**（只用 `node:` 内置 + 一个 vendored QR 编码器）。 |
-| **Android App**（[`app/`](app/)） | React Native（Expo SDK 58）+ [beUI Native](https://beui.dev) 组件；扫码/手动配对、会话列表、流式聊天、工具卡、审批、模型切换、断线重连。图标由 [`deepseek.svg`](deepseek.svg) 生成。 |
+| **Android App**（[`app/`](app/)） | React Native（Expo SDK 58）+ [beUI Native](https://beui.dev) 组件；扫码/手动配对、会话列表、流式聊天、工具卡、审批、模型切换、断线重连。图标与文字标识来自 [`deepseek-whale.png`](app/assets/images/deepseek-whale.png) / [`deepseek-wordmark.png`](app/assets/images/deepseek-wordmark.png)（[`deepseek.svg`](deepseek.svg) 为原始矢量）。 |
 
 > 所有流量只走你的局域网：手机 → 电脑 `LAN:8790`。没有中转服务器，没有账号体系，会话与凭据都留在本机。
 
@@ -212,7 +217,8 @@ dsh-remote-/
 ├── docs/                   协议、架构、构建、验证报告与截图
 ├── tools/                  验证工具（独立协议客户端 / mock / e2e / APK 校验）
 ├── dist/                   已构建 APK（git 忽略，见 Releases）
-└── deepseek.svg            品牌图标源文件
+├── deepseek.svg            品牌原始矢量（鲸鱼 + 文字）
+└── deepseek-text.svg
 ```
 
 ## 开发
@@ -278,4 +284,4 @@ node tools/verify/protocol-client.mjs --url http://127.0.0.1:8790 --code 123456 
 
 [MIT](LICENSE) © shanchuann
 
-<sub>DeepSeek Harness 是 DeepSeek 的产品；本仓库是非官方的社区远程访问方案。DeepSeek 鲸鱼图标来自仓库内 [deepseek.svg](deepseek.svg)。</sub>
+<sub>DeepSeek Harness 是 DeepSeek 的产品；本仓库是非官方的社区远程访问方案。DeepSeek 鲸鱼图标与文字标识来自仓库内 [deepseek-whale.png](app/assets/images/deepseek-whale.png) / [deepseek-wordmark.png](app/assets/images/deepseek-wordmark.png)。</sub>

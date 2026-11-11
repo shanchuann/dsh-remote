@@ -76,7 +76,7 @@ DSH 的审批是 **agent 作用域的 waterfall**（`approval/request`）。插�
 | `app/src/app/` | Expo Router 路由（连接/会话列表/聊天/设置） |
 | `app/src/components/<beui>/` | beUI Native 复制进来的组件源码（勿改） |
 | `tools/verify/` | 独立协议客户端、mock 宿主、负向测试、e2e |
-| `tools/icons/` | 由 deepseek.svg 生成 Android 图标/启动图 |
+| `tools/icons/` | 由 app/assets/images/deepseek-whale.png 生成 Android 图标/启动图 |
 | `docs/protocol.md` | 移动协议 v1（含真实抓包 §9） |
 | `docs/app-architecture.md` | App 文件所有权与 Store/Client 契约 |
 

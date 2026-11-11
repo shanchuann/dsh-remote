@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useResolveClassNames, useUniwind } from 'uniwind';
 
 import { AppButton } from '../components/common/app-button';
+import { Wordmark } from '../components/common/wordmark';
 import { ErrorBanner } from '../components/common/error-banner';
 import { CloseIcon, ScanIcon, ServerIcon } from '../components/common/icons';
 import { LoadingView, ScreenFrame } from '../components/common/screen';
@@ -183,7 +184,7 @@ export default function ConnectScreen() {
       <ScreenFrame>
         <View className="flex-1 items-center justify-center gap-5 px-8">
           <BrandMark size={72} />
-          <Text className="text-2xl font-semibold text-foreground">DSH Remote</Text>
+          <Wordmark height={26} />
           <LoadingView label="正在恢复连接…" />
         </View>
       </ScreenFrame>
@@ -203,7 +204,8 @@ export default function ConnectScreen() {
         >
           <View className="items-center gap-3 pb-7 pt-10">
             <BrandMark />
-            <Text className="text-[28px] font-semibold leading-8 text-foreground">DSH Remote</Text>
+            <Wordmark height={30} />
+            <Text className="text-[11px] font-medium uppercase tracking-[2.5px] text-muted">DSH Remote</Text>
             <Text className="max-w-[300px] text-center text-sm leading-5 text-muted">
               在手机上继续电脑端 DeepSeek Harness 的会话，同一局域网内直连。
             </Text>
