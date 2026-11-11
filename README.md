@@ -72,12 +72,12 @@
 
 <table>
 <tr>
-<td><img src="docs/verification/screenshots/06-after-connect.png" alt="会话列表" /></td>
+<td><img src="docs/verification/screenshots/brand-05-connect-form.png" alt="连接页" /></td>
 <td><img src="docs/verification/screenshots/32-keyboard.png" alt="键盘上方输入" /></td>
 <td><img src="docs/verification/screenshots/36-progress.png" alt="流式与工具卡" /></td>
 </tr>
 <tr>
-<td align="center"><sub>会话列表 · 已连接状态</sub></td>
+<td align="center"><sub>连接页 · deepseek 品牌</sub></td>
 <td align="center"><sub>键盘弹出，输入区自动上抬</sub></td>
 <td align="center"><sub>工具调用 + 流式回复（PONG）</sub></td>
 </tr>
