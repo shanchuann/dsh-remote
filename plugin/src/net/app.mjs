@@ -116,9 +116,8 @@ export async function createRemoteRuntime(options) {
     const snapshot = pairing.snapshot();
     const endpoints = pairingEndpoints(state.port, interfaces);
     const hostName = hostDisplayName();
-    const uri = pairingUri({ baseUrl: endpoints.baseUrl, code: snapshot.code, hostId: hostState.hostId, hostName });
     const pub = publicUrl();
-    const publicUri = pub === null ? null : pairingUri({ baseUrl: pub, code: snapshot.code, hostId: hostState.hostId, hostName });
+    const uri = pairingUri({ baseUrl: endpoints.baseUrl, altUrl: pub ?? undefined, code: snapshot.code, hostId: hostState.hostId, hostName });
     return {
       protocol: PROTOCOL_VERSION,
       pluginVersion,
@@ -137,7 +136,6 @@ export async function createRemoteRuntime(options) {
         lastSeenAt: device.lastSeenAt
       })),
       qrSvg: qrSvg(uri, { cellSize: 6, margin: 4, scalable: true }),
-      publicQrSvg: publicUri === null ? null : qrSvg(publicUri, { cellSize: 5, margin: 4, scalable: true }),
       serverTime: now()
     };
   }
@@ -146,15 +144,10 @@ export async function createRemoteRuntime(options) {
     const snapshot = pairing.snapshot();
     const endpoints = pairingEndpoints(state.port, interfaces);
     const hostName = hostDisplayName();
+    const publicBase = publicUrl();
     const uri = pairingUri({
       baseUrl: endpoints.baseUrl,
-      code: snapshot.code,
-      hostId: hostState.hostId,
-      hostName
-    });
-    const publicBase = publicUrl();
-    const publicUri = publicBase === null ? null : pairingUri({
-      baseUrl: publicBase,
+      altUrl: publicBase ?? undefined,
       code: snapshot.code,
       hostId: hostState.hostId,
       hostName
@@ -169,7 +162,6 @@ export async function createRemoteRuntime(options) {
       qrSvg: qrSvg(uri, { cellSize: 6, margin: 4, scalable: true }),
       addresses: endpoints.addresses,
       publicUrl: publicBase,
-      publicQrSvg: publicUri === null ? null : qrSvg(publicUri, { cellSize: 5, margin: 4, scalable: true }),
       tunnel: tunnelSnapshot(),
       devices: devices.list(),
       now: now()
@@ -328,6 +320,7 @@ export async function createRemoteRuntime(options) {
       const endpoints = pairingEndpoints(state.port, interfaces);
       return pairingUri({
         baseUrl: endpoints.baseUrl,
+        altUrl: publicUrl() ?? undefined,
         code: snapshot.code,
         hostId: hostState.hostId,
         hostName: hostDisplayName()

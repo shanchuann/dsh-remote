@@ -72,6 +72,8 @@ import { PROTOCOL_VERSION } from './types';
 /** Input for connect() (protocol 1.2 / 1.3). */
 export interface ConnectInput {
   baseUrl: string;
+  /** Public fallback from the same QR; tried once when baseUrl is unreachable. */
+  altBaseUrl?: string;
   code: string;
   /** Defaults to the persisted name or a platform default. */
   deviceName?: string;
@@ -419,60 +421,72 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
   const actions: RemoteActions = {
     async connect(input) {
       const baseUrl = normalizeBaseUrl(input.baseUrl);
+      const altBaseUrl = input.altBaseUrl ? normalizeBaseUrl(input.altBaseUrl) : undefined;
       const code = input.code?.trim() ?? '';
       if (!isValidPairingCode(code)) throw new Error('请输入 6 位数字配对码');
-      set((state) => ({
-        connection: { ...state.connection, status: 'connecting', baseUrl, error: undefined },
-      }));
-      try {
-        const meta = await loadConnectionMeta();
-        const deviceId = meta?.deviceId ?? randomUuid();
-        const deviceName = input.deviceName?.trim() || meta?.deviceName || defaultDeviceName();
-        const result = await RemoteClient.pair(baseUrl, code, deviceName, {
-          deviceId,
-          platform: platformName(),
-          appVersion: appVersion(),
-        });
-        if (typeof result.protocol === 'number' && result.protocol !== PROTOCOL_VERSION) {
-          throw new ApiError(0, 'protocol-unsupported', 'Host 协议版本不兼容（' + result.protocol + '）');
-        }
-        await saveToken(result.token);
-        const next = new RemoteClient({ baseUrl, token: result.token });
-        const health = await next.health();
-        if (typeof health.protocol === 'number' && health.protocol !== PROTOCOL_VERSION) {
-          throw new ApiError(0, 'protocol-unsupported', 'Host 协议版本不兼容（' + health.protocol + '）');
-        }
-        const host = await next.host();
-        attachClient(next);
-        next.connectEvents();
-        await saveConnectionMeta({
-          baseUrl,
-          deviceId: typeof result.deviceId === 'string' && result.deviceId ? result.deviceId : deviceId,
-          deviceName,
-          hostId: host.hostId ?? result.host?.id,
-          hostName: host.name ?? result.host?.name,
-        });
+      // One QR carries both networks: the LAN address first, then the public
+      // fallback. Only a failed attempt moves on, so a wrong code never turns
+      // into two lockout attempts on two endpoints.
+      const candidates = altBaseUrl && altBaseUrl !== baseUrl ? [baseUrl, altBaseUrl] : [baseUrl];
+      let lastError: unknown = null;
+      for (let index = 0; index < candidates.length; index += 1) {
+        const target = candidates[index] ?? baseUrl;
         set((state) => ({
-          connection: {
-            ...state.connection,
-            status: 'connected',
-            baseUrl,
-            deviceName,
-            host,
-            error: undefined,
-            needsPairing: false,
-          },
-          host,
-          devices: host.devices ?? [],
+          connection: { ...state.connection, status: 'connecting', baseUrl: target, error: undefined },
         }));
-        void get().actions.refreshSessions();
-      } catch (error) {
-        detachClient();
-        await clearToken();
-        await clearConnectionMeta();
-        setConnectionError(describeError(error));
-        throw error;
+        try {
+          const meta = await loadConnectionMeta();
+          const deviceId = meta?.deviceId ?? randomUuid();
+          const deviceName = input.deviceName?.trim() || meta?.deviceName || defaultDeviceName();
+          const result = await RemoteClient.pair(target, code, deviceName, {
+            deviceId,
+            platform: platformName(),
+            appVersion: appVersion(),
+          });
+          if (typeof result.protocol === 'number' && result.protocol !== PROTOCOL_VERSION) {
+            throw new ApiError(0, 'protocol-unsupported', 'Host 协议版本不兼容（' + result.protocol + '）');
+          }
+          await saveToken(result.token);
+          const next = new RemoteClient({ baseUrl: target, token: result.token });
+          const health = await next.health();
+          if (typeof health.protocol === 'number' && health.protocol !== PROTOCOL_VERSION) {
+            throw new ApiError(0, 'protocol-unsupported', 'Host 协议版本不兼容（' + health.protocol + '）');
+          }
+          const host = await next.host();
+          attachClient(next);
+          next.connectEvents();
+          await saveConnectionMeta({
+            baseUrl: target,
+            deviceId: typeof result.deviceId === 'string' && result.deviceId ? result.deviceId : deviceId,
+            deviceName,
+            hostId: host.hostId ?? result.host?.id,
+            hostName: host.name ?? result.host?.name,
+          });
+          set((state) => ({
+            connection: {
+              ...state.connection,
+              status: 'connected',
+              baseUrl: target,
+              deviceName,
+              host,
+              error: undefined,
+              needsPairing: false,
+            },
+            host,
+            devices: host.devices ?? [],
+          }));
+          void get().actions.refreshSessions();
+          return;
+        } catch (error) {
+          lastError = error;
+          detachClient();
+          await clearToken();
+          await clearConnectionMeta();
+          if (index === candidates.length - 1) break;
+        }
       }
+      setConnectionError(describeError(lastError));
+      throw lastError;
     },
 
     async restore() {

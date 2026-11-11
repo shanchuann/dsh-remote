@@ -267,7 +267,7 @@ node tools/verify/protocol-client.mjs --url http://127.0.0.1:8790 --code 123456 
       mode: quick          # 随机 https://xxx.trycloudflare.com；长期用 named + token + hostname
 ```
 
-配对页会出现「公网访问」卡片和第二个二维码，手机不在同一局域网也能连。也支持 `publicUrl` 静态地址（Caddy/Nginx/frp），或直接用 Tailscale 组网。详见 [docs/remote-access.md](docs/remote-access.md)。
+配对页仍只有一个二维码：二维码里同时写入局域网地址和公网地址（`alt`），手机 App 先试局域网、失败自动切公网，同一个配对码两条路径都可用。页面上的「公网访问」卡片只用于展示地址和隧道状态。也支持 `publicUrl` 静态地址（Caddy/Nginx/frp），或直接用 Tailscale 组网。详见 [docs/remote-access.md](docs/remote-access.md)。
 
 <p align="center"><img src="docs/verification/screenshots/dsh-settings-remote.png" width="720" alt="DSH 设置 → 远程控制" /></p>
 

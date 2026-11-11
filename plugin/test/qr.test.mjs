@@ -60,6 +60,18 @@ test("pairing URI encodes base URL, code, host, and name", () => {
   assert.equal(withoutName.includes("n="), false);
 });
 
+test("one QR carries the LAN URL plus a public alt URL", () => {
+  const uri = pairingUri({
+    baseUrl: "http://192.168.1.23:8790",
+    altUrl: "https://dsh.trycloudflare.com",
+    code: "123456",
+    hostId: "host-uuid"
+  });
+  const parsed = new URL(uri);
+  assert.equal(parsed.searchParams.get("u"), "http://192.168.1.23:8790");
+  assert.equal(parsed.searchParams.get("alt"), "https://dsh.trycloudflare.com");
+});
+
 test("LAN address discovery skips internal interfaces and prefers private ranges", () => {
   const interfaces = {
     loopback: [{ address: "127.0.0.1", family: "IPv4", internal: true }],

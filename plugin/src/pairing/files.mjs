@@ -72,6 +72,8 @@ export function pairingUri(input) {
   params.set("c", input.code);
   params.set("h", input.hostId);
   if (typeof input.hostName === "string" && input.hostName.length > 0) params.set("n", input.hostName);
+  // One QR for both networks: the app tries `u` (LAN) then `alt` (public).
+  if (typeof input.altUrl === "string" && input.altUrl.length > 0) params.set("alt", input.altUrl);
   return "dshremote://pair?" + params.toString();
 }
 
@@ -133,6 +135,7 @@ export async function writePairingArtifacts(input) {
   const endpoints = pairingEndpoints(input.port, input.interfaces);
   const uri = pairingUri({
     baseUrl: endpoints.baseUrl,
+    altUrl: input.publicUrl,
     code: input.pairing.code,
     hostId: input.hostId,
     hostName: input.hostName

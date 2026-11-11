@@ -17,6 +17,8 @@ export interface PairingInfo {
   hostId?: string;
   /** Optional display name for the host. */
   hostName?: string;
+  /** Public fallback address carried by the same QR (tried when baseUrl fails). */
+  altBaseUrl?: string;
 }
 
 const PAIR_SCHEME = 'dshremote';
@@ -113,6 +115,7 @@ export function buildPairingUri(info: PairingInfo): string {
   if (info.code) parts.push('c=' + encodeURIComponent(info.code));
   if (info.hostId) parts.push('h=' + encodeURIComponent(info.hostId));
   if (info.hostName) parts.push('n=' + encodeURIComponent(info.hostName));
+  if (info.altBaseUrl) parts.push('alt=' + encodeURIComponent(info.altBaseUrl));
   return PAIR_SCHEME + '://pair?' + parts.join('&');
 }
 
@@ -139,6 +142,8 @@ export function parsePairingUri(raw: string | undefined | null): PairingInfo | n
       if (hostId) info.hostId = hostId;
       const hostName = nonEmpty(obj.n) ?? nonEmpty(obj.hostName) ?? nonEmpty(obj.name);
       if (hostName) info.hostName = hostName;
+      const alt = tryNormalizeBaseUrl(nonEmpty(obj.alt) ?? nonEmpty(obj.altBaseUrl));
+      if (alt && alt !== baseUrl) info.altBaseUrl = alt;
       return info;
     } catch {
       return null;
@@ -156,6 +161,8 @@ export function parsePairingUri(raw: string | undefined | null): PairingInfo | n
     if (code) info.code = code;
     if (params.h) info.hostId = params.h;
     if (params.n) info.hostName = params.n;
+    const alt = tryNormalizeBaseUrl(params.alt);
+    if (alt && alt !== baseUrl) info.altBaseUrl = alt;
     return info;
   }
 

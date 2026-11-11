@@ -11,7 +11,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useResolveClassNames, useUniwind } from 'uniwind';
+import { useResolveClassNames } from 'uniwind';
 
 import { AppButton } from '../components/common/app-button';
 import { ErrorBanner } from '../components/common/error-banner';
@@ -40,7 +40,7 @@ function BrandMark({ size = 64 }: { size?: number }) {
 }
 
 export default function ConnectScreen() {
-  const params = useLocalSearchParams<{ u?: string; c?: string; h?: string; n?: string }>();
+  const params = useLocalSearchParams<{ u?: string; c?: string; h?: string; n?: string; alt?: string }>();
   const connection = useRemoteStore((state) => state.connection);
   const connect = useRemoteStore((state) => state.actions.connect);
   const { color: mutedColor } = useResolveClassNames('text-muted');
@@ -92,13 +92,14 @@ export default function ConnectScreen() {
   }, []);
 
   const submit = useCallback(
-    async (override?: { baseUrl?: string; code?: string }) => {
+    async (override?: { baseUrl?: string; altBaseUrl?: string; code?: string }) => {
       if (submittingRef.current) return;
       const rawBase = (override?.baseUrl ?? baseUrl).trim();
       const rawCode = (override?.code ?? code).trim();
       // A pasted pairing URI carries both the host address and the code.
       const parsed = rawBase.toLowerCase().startsWith('dshremote:') ? parsePairingUri(rawBase) : null;
       const targetBase = parsed?.baseUrl ?? tryNormalizeBaseUrl(rawBase) ?? '';
+      const targetAlt = parsed?.altBaseUrl;
       const targetCode = rawCode || parsed?.code || '';
       if (!targetBase) {
         setError('请输入 Host 地址，例如 http://192.168.1.23:8790');
@@ -112,7 +113,7 @@ export default function ConnectScreen() {
       setBusy(true);
       setError(undefined);
       try {
-        await connect({ baseUrl: targetBase, code: targetCode, deviceName });
+        await connect({ baseUrl: targetBase, altBaseUrl: targetAlt, code: targetCode, deviceName });
         router.replace('/sessions');
       } catch (cause) {
         setError(describeError(cause));
@@ -136,10 +137,10 @@ export default function ConnectScreen() {
     autoPairRef.current = key;
     // Defer so the connect screen can paint before the pairing request starts.
     const timer = setTimeout(() => {
-      void submit({ baseUrl: u, code: c });
+      void submit({ baseUrl: u, altBaseUrl: typeof params.alt === 'string' ? params.alt : undefined, code: c });
     }, 0);
     return () => clearTimeout(timer);
-  }, [params.c, params.u, submit]);
+  }, [params.alt, params.c, params.u, submit]);
 
   const openScanner = useCallback(() => {
     scannedRef.current = false;
@@ -168,7 +169,7 @@ export default function ConnectScreen() {
       setBaseUrl(info.baseUrl);
       setCode(info.code);
       setScannerOpen(false);
-      void submit({ baseUrl: info.baseUrl, code: info.code });
+      void submit({ baseUrl: info.baseUrl, altBaseUrl: info.altBaseUrl, code: info.code });
     },
     [submit],
   );

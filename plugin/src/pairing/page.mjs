@@ -79,7 +79,6 @@ export function renderPairingPage(input) {
   .card { background: #fff; border: 1px solid #e3e6ea; border-radius: 16px; padding: 24px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
   .qr { display: flex; justify-content: center; }
   .qr svg { width: 260px; height: 260px; }
-  .qr.small svg { width: 180px; height: 180px; }
   .public .sub { color: #5b626b; }
   .public code { word-break: break-all; }
   .code { margin-top: 12px; text-align: center; }
@@ -112,7 +111,7 @@ export function renderPairingPage(input) {
 <body>
 <main>
   <h1>DSH Remote</h1>
-  <p class="sub">用手机 App 扫描二维码完成配对 / Scan the QR code with the mobile app to pair.</p>
+  <p class="sub">用手机 App 扫描二维码完成配对（局域网 / 公网自动选择）/ Scan once — the app tries the LAN address, then the public one.</p>
   <section class="card">
     <div class="qr">${input.qrSvg}</div>
     <div class="code">
@@ -129,10 +128,9 @@ export function renderPairingPage(input) {
   ${input.publicUrl ? '<h2>公网访问 / Public access</h2>' +
   '<section class="card public">' +
   '<p class="sub" style="margin:0 0 12px">Cloudflare 隧道 / Tunnel: <code>' + escapeHtml(input.publicUrl) + '</code></p>' +
-  (input.publicQrSvg ? '<div class="qr small">' + input.publicQrSvg + '</div>' : '') +
   '<p class="tip">mode: ' + escapeHtml(String(input.tunnel?.mode ?? 'static')) +
   ' · status: ' + escapeHtml(input.tunnel?.running === true ? 'running' : (input.tunnel?.error ? 'error: ' + input.tunnel.error : 'configured')) + '</p>' +
-  '<p class="tip">在外网用手机 App 扫描上面的二维码，或手动输入公网地址 + 6 位配对码。</p>' +
+  '<p class="tip">二维码同时包含局域网与公网地址，手机扫码后会自动选择可达的那个；也可以手动输入二维码下方的地址。</p>' +
   '</section>' : ''}
 
   <h2>配对步骤 / How to pair</h2>

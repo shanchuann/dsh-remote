@@ -155,7 +155,6 @@ window.__ModuleLoader__.load({
       var now = data.serverTime + (Date.now() - loadedAtRef.current);
       var remaining = Math.max(0, Math.round((data.pairing.expiresAt - now) / 1000));
       var lanQr = qrDataUri(data.qrSvg);
-      var publicQr = qrDataUri(data.publicQrSvg);
       var publicRunning = data.tunnel !== null && data.tunnel !== undefined && data.tunnel.running === true;
 
       return h(
@@ -183,7 +182,7 @@ window.__ModuleLoader__.load({
                 h(Button, { primary: true, onClick: function () { copyText(data.pairing.code); } }, "复制配对码"),
                 h(Button, { onClick: function () { copyText(data.addresses.length > 0 ? data.addresses[0].url : ""); } }, "复制地址"),
               ),
-              h(Muted, null, "手机 App 扫码，或手动输入下方地址 + 6 位配对码。"),
+              h(Muted, null, "手机扫码即可：二维码同时包含局域网与公网地址，App 会自动选择可达的那个。"),
             ),
           ),
         ),
@@ -211,13 +210,6 @@ window.__ModuleLoader__.load({
           ? h(Card, null,
               h("div", { style: { fontSize: 14, fontWeight: 600 } }, "公网访问 / Cloudflare"),
               h("div", { style: { display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center" } },
-                publicQr !== null ? h("img", {
-                  src: publicQr,
-                  alt: "公网配对二维码",
-                  width: 140,
-                  height: 140,
-                  style: { width: 140, height: 140, background: "#fff", padding: 8, borderRadius: 10, flex: "none" },
-                }) : null,
                 h("div", { style: { display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 220 } },
                   h("a", {
                     href: data.publicUrl,
@@ -229,7 +221,7 @@ window.__ModuleLoader__.load({
                     "模式：" + (data.tunnel && data.tunnel.mode ? data.tunnel.mode : "static") +
                     " · 状态：" + (publicRunning ? "运行中" : (data.tunnel && data.tunnel.error ? "错误：" + data.tunnel.error : "未运行")),
                   ),
-                  h(Muted, null, "不在同一局域网时，用手机扫描上面的公网二维码。"),
+                  h(Muted, null, "公网地址已写入上面的同一个二维码，无需单独扫码。"),
                 ),
               ),
             )
