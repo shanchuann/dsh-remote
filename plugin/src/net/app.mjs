@@ -24,7 +24,6 @@ import { CloudflareTunnel } from "./cloudflare.mjs";
 import { createRemoteServer } from "./server.mjs";
 import { RemoteService } from "./service.mjs";
 import { EventHub } from "./sse.mjs";
-import { renderRemoteEntryScript } from "./ui-entry.mjs";
 
 /** How often the pairing code is checked for expiry (it rotates itself). */
 const PAIRING_REFRESH_MS = 15000;
@@ -112,6 +111,37 @@ export async function createRemoteRuntime(options) {
     return state.tunnel === null ? null : state.tunnel.snapshot();
   }
 
+  /** JSON the Settings page polls every few seconds. */
+  function pairingState() {
+    const snapshot = pairing.snapshot();
+    const endpoints = pairingEndpoints(state.port, interfaces);
+    const hostName = hostDisplayName();
+    const uri = pairingUri({ baseUrl: endpoints.baseUrl, code: snapshot.code, hostId: hostState.hostId, hostName });
+    const pub = publicUrl();
+    const publicUri = pub === null ? null : pairingUri({ baseUrl: pub, code: snapshot.code, hostId: hostState.hostId, hostName });
+    return {
+      protocol: PROTOCOL_VERSION,
+      pluginVersion,
+      hostId: hostState.hostId,
+      hostName,
+      port: state.port,
+      pairing: { code: snapshot.code, expiresAt: snapshot.expiresAt },
+      addresses: endpoints.addresses,
+      publicUrl: pub,
+      tunnel: tunnelSnapshot(),
+      devices: devices.list().map((device) => ({
+        deviceId: device.deviceId,
+        name: device.name,
+        platform: device.platform,
+        createdAt: device.createdAt,
+        lastSeenAt: device.lastSeenAt
+      })),
+      qrSvg: qrSvg(uri, { cellSize: 6, margin: 4, scalable: true }),
+      publicQrSvg: publicUri === null ? null : qrSvg(publicUri, { cellSize: 5, margin: 4, scalable: true }),
+      serverTime: now()
+    };
+  }
+
   function renderPage() {
     const snapshot = pairing.snapshot();
     const endpoints = pairingEndpoints(state.port, interfaces);
@@ -195,6 +225,10 @@ export async function createRemoteRuntime(options) {
     },
     get pairingArtifacts() {
       return state.artifacts;
+    },
+    /** Same data the Settings page renders (also unit-testable). */
+    pairingState() {
+      return pairingState();
     },
     /** External root the phone can reach, if a tunnel/public URL is active. */
     get publicUrl() {
@@ -323,29 +357,40 @@ export async function createRemoteRuntime(options) {
   service.publicUrlProvider = () => runtime.publicUrl;
   service.tunnelProvider = () => runtime.tunnelStatus;
 
-  // Desktop/web entry: inject a floating "远程控制" button into the DSH index.
+  // Settings page data: the client bundle renders the QR/code/devices from
+  // this same-origin JSON route (the DSH Settings → 远程控制 section).
   const hostContext = settings.ctx;
-  if (config.uiEntry && hostContext !== undefined && typeof hostContext.inject === "function") {
+  if (hostContext !== undefined && typeof hostContext.inject === "function") {
     try {
       hostContext.inject(["webServer"], (webCtx) => {
         try {
-          webCtx.on("webserver/index-inject", (table) => {
-            table.push({
-              kind: "global",
-              name: "__DSH_REMOTE__",
-              value: {
-                pairUrl: "http://127.0.0.1:" + state.port + "/pair",
-                publicUrl: runtime.publicUrl
+          webCtx.effect(() => webCtx.webServer.register({
+            kind: "exact",
+            path: "/dsh-remote/state",
+            handler: (request, response) => {
+              if (request.method !== "GET") {
+                response.writeHead(405, { allow: "GET", "content-type": "application/json; charset=utf-8" });
+                response.end(JSON.stringify({ error: "method-not-allowed" }));
+                return;
               }
-            });
-            table.push({ kind: "script", placement: "body", text: renderRemoteEntryScript() });
-          });
+              let body;
+              try {
+                body = JSON.stringify(runtime.pairingState());
+              } catch (error) {
+                response.writeHead(500, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+                response.end(JSON.stringify({ error: "internal", message: String(error?.message ?? error) }));
+                return;
+              }
+              response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+              response.end(body);
+            }
+          }), "dsh-remote: settings state route");
         } catch (error) {
-          logger.warn("dsh remote: cannot inject the web entry: " + (error?.message ?? error));
+          logger.warn("dsh remote: cannot register the settings route: " + (error?.message ?? error));
         }
       });
     } catch (error) {
-      logger.warn("dsh remote: cannot register the web entry: " + (error?.message ?? error));
+      logger.warn("dsh remote: cannot register the settings state: " + (error?.message ?? error));
     }
   }
 

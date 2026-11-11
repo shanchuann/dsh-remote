@@ -26,8 +26,7 @@ test("config normalization applies defaults and rejects nonsense", () => {
     dshHome: undefined,
     dataDir: undefined,
     publicUrl: undefined,
-    cloudflare: null,
-    uiEntry: true
+    cloudflare: null
   });
   const configured = normalizeConfig({ port: "8791", host: "127.0.0.1", pairingTtlMs: 1000, deviceTtlDays: 1, logLevel: "warn", dshHome: "D:\\tmp\\home" });
   assert.equal(configured.port, 8791);

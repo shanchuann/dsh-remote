@@ -116,7 +116,7 @@ flowchart LR
 
 打开 DSH → **插件 → 添加插件**，输入 `dsh-remote-harness` 安装即可。插件声明了 `dsh.bundle`，会作为一个 profile 组合包安装并在每次启动 DSH 时自动加载。
 
-安装完成、重启 DSH 后：DSH 右下角会出现 **「远程控制」** 浮动按钮，点击直接打开配对页（二维码 + 配对码 + 公网地址）；也可直接访问 <http://127.0.0.1:8790/pair>。
+安装完成、重启 DSH 后：打开 **设置 → 远程控制**，即可看到配对二维码、配对码（自动轮换/倒计时）、局域网地址、公网地址与已配对设备（每 4 秒自动刷新）。也可直接访问 <http://127.0.0.1:8790/pair>。
 
 **方式 B · 命令行安装**（等价）：
 
@@ -268,6 +268,9 @@ node tools/verify/protocol-client.mjs --url http://127.0.0.1:8790 --code 123456 
 ```
 
 配对页会出现「公网访问」卡片和第二个二维码，手机不在同一局域网也能连。也支持 `publicUrl` 静态地址（Caddy/Nginx/frp），或直接用 Tailscale 组网。详见 [docs/remote-access.md](docs/remote-access.md)。
+
+<p align="center"><img src="docs/verification/screenshots/dsh-settings-remote.png" width="720" alt="DSH 设置 → 远程控制" /></p>
+
 
 ## 安全
 

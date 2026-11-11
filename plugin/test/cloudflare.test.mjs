@@ -32,9 +32,7 @@ test("normalizeConfig parses publicUrl and cloudflare", () => {
   const config = normalizeConfig({ publicUrl: "https://dsh.example.com/", cloudflare: true });
   assert.equal(config.publicUrl, "https://dsh.example.com");
   assert.deepEqual(config.cloudflare, { enabled: true, mode: "quick" });
-  assert.equal(config.uiEntry, true);
   assert.throws(() => normalizeConfig({ publicUrl: "ftp://x" }), /publicUrl/);
-  assert.equal(normalizeConfig({ uiEntry: false }).uiEntry, false);
 });
 
 function fakeChild() {

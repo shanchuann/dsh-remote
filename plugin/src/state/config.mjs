@@ -114,8 +114,7 @@ export function normalizeConfig(raw) {
     dshHome: optionalString(source.dshHome),
     dataDir: optionalString(source.dataDir),
     publicUrl: parsePublicUrl(source.publicUrl),
-    cloudflare: normalizeCloudflare(source.cloudflare),
-    uiEntry: source.uiEntry !== false
+    cloudflare: normalizeCloudflare(source.cloudflare)
   };
 }
 

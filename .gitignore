@@ -42,3 +42,6 @@ tools/bin/
 .edge-*/
 
 .recon*
+
+.pw-test/
+.recon-client/

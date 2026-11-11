@@ -17,7 +17,7 @@ A paired Android phone gets the session list, live streaming chat, tool calls, a
 
 ### 1) 在 DSH 桌面里安装（推荐）
 
-DSH → **插件 → 添加插件** → 输入 `dsh-remote-harness`。本包声明了 `dsh.bundle`，安装后随 DSH 启动自动加载，无需运行脚本。
+DSH → **插件 → 添加插件** → 输入 `dsh-remote-harness`。本包声明了 `dsh.bundle` 与 `dsh.client`：安装后随 DSH 启动自动加载，并在 **设置 → 远程控制** 提供二维码/配对码/设备列表页面（4 秒自动刷新）。
 
 或在命令行安装：
 

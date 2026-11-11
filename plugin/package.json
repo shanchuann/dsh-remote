@@ -1,6 +1,6 @@
 {
   "name": "dsh-remote-harness",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "LAN remote access for DeepSeek Harness: QR pairing, device tokens, REST + SSE bridge for the DSH Remote Android app. Zero runtime dependencies.",
   "type": "module",
   "license": "MIT",
@@ -34,7 +34,8 @@
   "exports": {
     ".": "./src/index.mjs",
     "./package.json": "./package.json",
-    "./cordis.patch.yml": "./cordis.patch.yml"
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./client": "./client/index.js"
   },
   "bin": {
     "dsh-remote-install": "./scripts/install.mjs",
@@ -44,6 +45,7 @@
   "files": [
     "src/",
     "scripts/",
+    "client/",
     "vendor/",
     "cordis.patch.yml",
     "icon.png",
@@ -67,6 +69,12 @@
     "manifestVersion": 1,
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings"
+      ]
     }
   }
 }
