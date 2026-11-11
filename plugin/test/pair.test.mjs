@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { hashToken } from "../src/auth/tokens.mjs";
 import { pairDevice, request, startHarness } from "./helpers/harness.mjs";
+import { PLUGIN_VERSION } from "./helpers/plugin-version.mjs";
 
 async function withHarness(body) {
   const harness = await startHarness();
@@ -27,7 +28,7 @@ test("POST /v1/pair returns a 64-hex token and a host block", async () => {
     assert.equal(response.body.host.id, harness.runtime.hostState.hostId);
     assert.equal(response.body.host.platform, "win32");
     assert.equal(response.body.host.dshVersion, "0.2.2-rc.1");
-    assert.equal(response.body.host.pluginVersion, "0.1.0");
+    assert.equal(response.body.host.pluginVersion, PLUGIN_VERSION);
     assert.equal(response.headers.get("cache-control"), "no-store");
   });
 });

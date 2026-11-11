@@ -34,3 +34,5 @@ Thumbs.db
 *.err
 
 .node-shim/
+
+.release-notes-*.md

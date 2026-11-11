@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { FakeBridge, makeSessionRow } from "./helpers/fake-bridge.mjs";
 import { pairDevice, request, startHarness } from "./helpers/harness.mjs";
+import { PLUGIN_VERSION } from "./helpers/plugin-version.mjs";
 
 /** Boot a harness, run a body, always close both the listener and the temp home. */
 async function withHarness(options, body) {
@@ -61,7 +62,7 @@ test("GET /v1/host exposes capabilities and the current device flag", async () =
     assert.equal(response.status, 200);
     assert.equal(response.body.hostId, harness.runtime.hostState.hostId);
     assert.equal(response.body.protocol, 1);
-    assert.equal(response.body.pluginVersion, "0.1.0");
+    assert.equal(response.body.pluginVersion, PLUGIN_VERSION);
     assert.equal(response.body.capabilities.assistantStream, true);
     assert.equal(response.body.capabilities.approvals, true);
     assert.equal(response.body.capabilities.images, true);

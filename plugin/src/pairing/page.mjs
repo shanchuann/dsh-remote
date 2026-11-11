@@ -86,10 +86,13 @@ export function renderPairingPage(input) {
   .lock { margin: 16px 0 0; padding: 12px 14px; border-radius: 10px; background: #fff4e5; color: #8a4b00; font-size: 14px; }
   .muted { color: #5b626b; }
   ul { list-style: none; margin: 0; padding: 0; }
-  li { padding: 10px 0; border-bottom: 1px solid #eef0f3; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
-  li:last-child { border-bottom: none; }
+  .card ul li { padding: 10px 0; border-bottom: 1px solid #eef0f3; display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+  .card ul li:last-child { border-bottom: none; }
   .empty { color: #8b929b; }
   code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 14px; }
+  .steps { margin: 0; padding-left: 20px; }
+  .steps li { display: list-item; padding: 6px 0; border-bottom: none; }
+  .tip { margin: 12px 0 0; color: #5b626b; font-size: 13px; }
   .device-name { font-weight: 600; }
   .device-meta { color: #5b626b; font-size: 13px; }
   footer { margin-top: 32px; color: #8b929b; font-size: 12px; text-align: center; }
@@ -118,6 +121,16 @@ export function renderPairingPage(input) {
       (<span id="countdown">${escapeHtml(String(expiresInSeconds))}</span>s)
     </p>
     ${locked ? '<p class="lock">尝试次数过多，已临时锁定 / Too many failed attempts. Locked for <span id="lock-countdown">' + escapeHtml(String(lockedSeconds)) + "</span>s.</p>" : ""}
+  </section>
+
+  <h2>配对步骤 / How to pair</h2>
+  <section class="card">
+    <ol class="steps">
+      <li>手机与电脑连接同一个 Wi-Fi，处于同一局域网。</li>
+      <li>用手机 App 扫描上方二维码；也可以手动输入下面的 Host 地址 + 6 位配对码。</li>
+      <li>配对成功后，手机即可继续电脑上的 DSH 会话。关闭本页不影响连接。</li>
+    </ol>
+    <p class="tip">首次使用若手机连不上，请在电脑防火墙放行 TCP ${escapeHtml(String(input.port))} 端口。</p>
   </section>
 
   <h2>Host 地址 / Addresses</h2>

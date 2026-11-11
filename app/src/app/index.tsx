@@ -200,7 +200,7 @@ export default function ConnectScreen() {
             <BrandMark />
             <Text className="text-[28px] font-semibold leading-8 text-foreground">DSH Remote</Text>
             <Text className="max-w-[300px] text-center text-sm leading-5 text-muted">
-              在手机上继续电脑端 DeepSeek Harness 的会话，同一局域网内直连。
+              用手机连接你的 DeepSeek Harness
             </Text>
           </View>
 
@@ -261,19 +261,6 @@ export default function ConnectScreen() {
                 扫描二维码
               </AppButton>
             </View>
-          </View>
-
-          <View className="mt-6 gap-2 px-1">
-            <Text className="text-xs font-medium text-muted">如何配对</Text>
-            <Text className="text-xs leading-5 text-muted">
-              1. 在电脑上启动 DSH，插件会在 8790 端口开启局域网服务。
-            </Text>
-            <Text className="text-xs leading-5 text-muted">
-              2. 打开 http://127.0.0.1:8790/pair 查看二维码与 6 位配对码。
-            </Text>
-            <Text className="text-xs leading-5 text-muted">
-              3. 手机与电脑连接同一个 Wi-Fi 后，扫码或手动输入即可。
-            </Text>
           </View>
 
           <Text className="mt-6 text-center text-[11px] text-muted/70">
