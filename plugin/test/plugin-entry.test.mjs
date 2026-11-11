@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import * as plugin from "../src/index.mjs";
 import { createRemoteRuntime } from "../src/net/app.mjs";
 import { createLogger, normalizeConfig, PROTOCOL_VERSION } from "../src/state/config.mjs";
@@ -53,8 +53,8 @@ test("logger levels filter, and a missing logger is harmless", () => {
 });
 
 test("DSH home resolution prefers explicit, then env, then ~/.dsh", () => {
-  assert.equal(resolveDshHome("D:\\custom\\home", {}), "D:\\custom\\home");
-  assert.equal(resolveDshHome(undefined, { DSH_HOME: "D:\\env\\home" }), "D:\\env\\home");
+  assert.equal(resolveDshHome("D:\\custom\\home", {}), resolve("D:\\custom\\home"));
+  assert.equal(resolveDshHome(undefined, { DSH_HOME: "D:\\env\\home" }), resolve("D:\\env\\home"));
   assert.equal(resolveDshHome("  ", { DSH_HOME: "   " }).endsWith(".dsh"), true);
 });
 
