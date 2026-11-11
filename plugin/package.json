@@ -1,0 +1,62 @@
+{
+  "name": "dsh-remote-harness",
+  "version": "0.1.0",
+  "description": "LAN remote access for DeepSeek Harness: QR pairing, device tokens, REST + SSE bridge for the DSH Remote Android app. Zero runtime dependencies.",
+  "type": "module",
+  "license": "MIT",
+  "author": {
+    "name": "shanchuann",
+    "url": "https://github.com/shanchuann"
+  },
+  "homepage": "https://github.com/shanchuann/dsh-remote-#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shanchuann/dsh-remote-.git",
+    "directory": "plugin"
+  },
+  "bugs": {
+    "url": "https://github.com/shanchuann/dsh-remote-/issues"
+  },
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "cordis",
+    "plugin",
+    "remote",
+    "android",
+    "lan",
+    "sse",
+    "mobile",
+    "coding-agent"
+  ],
+  "main": "src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "dsh-remote-install": "./scripts/install.mjs",
+    "dsh-remote-uninstall": "./scripts/uninstall.mjs",
+    "dsh-remote-pair": "./scripts/pair-cli.mjs"
+  },
+  "files": [
+    "src/",
+    "scripts/",
+    "vendor/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "test": "node test/run-all.mjs",
+    "pair-info": "node scripts/pair-cli.mjs",
+    "install-plugin": "node scripts/install.mjs",
+    "uninstall-plugin": "node scripts/uninstall.mjs"
+  }
+}

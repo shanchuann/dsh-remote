@@ -1,0 +1,32 @@
+# dependencies
+node_modules/
+app/node_modules/
+tools/**/node_modules/
+
+# build output
+dist-export/
+app/android/
+app/ios/
+app/.expo/
+plugin/*.tgz
+.npm-check/
+*.tsbuildinfo
+
+# local test / runtime state
+.recon/
+.testhome/
+*.log
+*.bak
+
+# verification temp artifacts
+tools/verify/.*
+tools/verify/apk-*/
+docs/verification/apk-icons/
+
+# release binaries (attached to GitHub Releases instead)
+dist/*.apk
+!dist/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db

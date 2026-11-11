@@ -1,0 +1,7 @@
+{
+  "name": "dsh-remote-icons",
+  "private": true,
+  "type": "commonjs",
+  "scripts": { "icons": "node make-icons.cjs" },
+  "dependencies": { "sharp": "^0.34.0" }
+}

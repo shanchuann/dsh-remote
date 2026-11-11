@@ -1,0 +1,44 @@
+/* DeepSeek Remote theme: beUI Native tokens tuned to the DeepSeek brand.
+   Primary is DeepSeek blue (#4D6BFE); surfaces are near-black/off-white. */
+@layer theme {
+  :root {
+    @variant light {
+      --color-background: oklch(99% 0 0);
+      --color-surface: oklch(97% 0 0);
+      --color-foreground: oklch(15% 0 0);
+      --color-muted: oklch(50% 0 0);
+      --color-border: oklch(15% 0 0 / 0.06);
+      --color-border-strong: oklch(15% 0 0 / 0.16);
+      --color-primary: #4d6bfe;
+      --color-on-primary: #ffffff;
+      --color-destructive: #dc2626;
+      --color-success: #059669;
+      --color-warning: #d97706;
+    }
+  }
+  :root {
+    @variant dark {
+      --color-background: #0e0f13;
+      --color-surface: #171923;
+      --color-foreground: oklch(96% 0 0);
+      --color-muted: oklch(62% 0 0);
+      --color-border: rgb(255 255 255 / 0.06);
+      --color-border-strong: rgb(255 255 255 / 0.16);
+      --color-primary: #6b83ff;
+      --color-on-primary: #ffffff;
+      --color-destructive: #f87171;
+      --color-success: #34d399;
+      --color-warning: #fbbf24;
+    }
+  }
+  :root {
+    @variant ios {
+      --font-mono: Menlo;
+    }
+  }
+  :root {
+    @variant android {
+      --font-mono: monospace;
+    }
+  }
+}
