@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "dsh-remote-harness": "^0.1.0"
+  }
+}

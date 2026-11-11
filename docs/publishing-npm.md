@@ -1,6 +1,6 @@
 # 发布到 npm
 
-包名：**`dsh-remote-harness`**（目录 [`plugin/`](../plugin/)）。
+包名：**`dsh-remote-harness`**（目录 [`plugin/`](../plugin/)）· 当前版本 **0.1.0** 已发布：<https://www.npmjs.com/package/dsh-remote-harness>。
 
 ## 发布前检查（无需登录）
 

@@ -15,7 +15,7 @@
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)]()
 [![Expo SDK](https://img.shields.io/badge/Expo-SDK%2058-000020?logo=expo&logoColor=white)]()
 [![Protocol](https://img.shields.io/badge/wire%20protocol-v1-8A2BE2)](docs/protocol.md)
-[![npm](https://img.shields.io/badge/npm-dsh--remote--harness-CB3837?logo=npm&logoColor=white)](plugin/)
+[![npm](https://img.shields.io/npm/v/dsh-remote-harness?logo=npm&color=CB3837)](https://www.npmjs.com/package/dsh-remote-harness)
 [![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 
 [功能](#功能) · [截图](#截图) · [架构](#架构) · [快速开始](#快速开始) · [npm 包](#npm-包) · [协议](#协议-v1) · [验证](#验证结果) · [开发](#开发)
@@ -163,7 +163,7 @@ cd android && ./gradlew assembleRelease
 
 ## npm 包
 
-插件可独立发布/安装，包名 **`dsh-remote-harness`**（发布到 npm  Registry 后即可 `npm view` / `dsh plugin add`）：
+插件已发布到 npm：**[`dsh-remote-harness`](https://www.npmjs.com/package/dsh-remote-harness)**（v0.1.0）。
 
 ```bash
 npm view dsh-remote-harness        # 查看版本
