@@ -217,6 +217,8 @@ export class RemoteService {
       dshVersion: host.dshVersion,
       hostId: host.hostId,
       pairingRequired: this.devices.pairingRequired,
+      publicUrl: typeof this.publicUrlProvider === "function" ? this.publicUrlProvider() : null,
+      tunnel: typeof this.tunnelProvider === "function" ? this.tunnelProvider() : null,
       time: this.now()
     };
   }
@@ -229,7 +231,8 @@ export class RemoteService {
       name: host.name,
       platform: host.platform,
       dshVersion: host.dshVersion,
-      pluginVersion: this.pluginVersion
+      pluginVersion: this.pluginVersion,
+      publicUrl: typeof this.publicUrlProvider === "function" ? this.publicUrlProvider() : null
     };
   }
 
@@ -245,6 +248,8 @@ export class RemoteService {
       protocol: this.protocolVersion,
       capabilities: host.capabilities,
       defaultCwd: host.defaultCwd,
+      publicUrl: typeof this.publicUrlProvider === "function" ? this.publicUrlProvider() : null,
+      tunnel: typeof this.tunnelProvider === "function" ? this.tunnelProvider() : null,
       devices: this.devicesPayload(deviceId)
     };
   }

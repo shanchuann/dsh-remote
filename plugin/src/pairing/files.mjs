@@ -90,6 +90,7 @@ export function pairingDescriptor(input) {
     addresses: input.addresses.map((entry) => entry.url),
     pairingCode: input.pairing.code,
     pairingExpiresAt: input.pairing.expiresAt,
+    publicUrl: input.publicUrl ?? null,
     updatedAt: input.now
   };
 }
@@ -111,6 +112,7 @@ export function pairingText(input) {
     "URI:       " + input.uri,
     "Protocol:  " + input.protocol,
     "Paired devices: " + input.deviceCount,
+    ...(typeof input.publicUrl === "string" ? ["Public:    " + input.publicUrl] : []),
     "",
     "Pairing page (host only): http://127.0.0.1:" + input.port + "/pair",
     "Files: pairing.json, pairing.png, pairing.svg",
@@ -142,6 +144,7 @@ export async function writePairingArtifacts(input) {
     port: input.port,
     addresses: endpoints.addresses,
     pairing: input.pairing,
+    publicUrl: input.publicUrl,
     now
   });
   const svg = qrSvg(uri, { cellSize: 6, margin: 4, scalable: true });
@@ -158,6 +161,7 @@ export async function writePairingArtifacts(input) {
         addresses: endpoints.addresses,
         pairing: input.pairing,
         uri,
+        publicUrl: input.publicUrl,
         deviceCount: input.deviceCount ?? 0,
         now
       })

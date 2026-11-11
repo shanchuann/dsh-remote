@@ -102,6 +102,7 @@ test("writePairingArtifacts writes json/txt/svg/png without credentials", async 
     addresses: ["http://127.0.0.1:8790"],
     pairingCode: "123456",
     pairingExpiresAt: now + 600000,
+    publicUrl: null,
     updatedAt: now
   });
   const text = await readFile(paths.pairingTxt, "utf8");

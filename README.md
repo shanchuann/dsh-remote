@@ -112,30 +112,27 @@ flowchart LR
 
 ### 1. 安装 Host 插件
 
-方式 A · **npm 包**（推荐）：
+**方式 A · 在 DSH 桌面里点一下（推荐，无需脚本）**
+
+打开 DSH → **插件 → 添加插件**，输入 `dsh-remote-harness` 安装即可。插件声明了 `dsh.bundle`，会作为一个 profile 组合包安装并在每次启动 DSH 时自动加载。
+
+安装完成、重启 DSH 后：DSH 右下角会出现 **「远程控制」** 浮动按钮，点击直接打开配对页（二维码 + 配对码 + 公网地址）；也可直接访问 <http://127.0.0.1:8790/pair>。
+
+**方式 B · 命令行安装**（等价）：
 
 ```bash
-# 在 DSH profile 里安装（profile 目录：~/.dsh/profiles/desktop）
 dsh plugin --profile desktop add dsh-remote-harness
 ```
 
-然后在 `~/.dsh/profiles/desktop/cordis.patch.yml` 的 `insert` 列表里加入：
-
-```yaml
-- insert:
-    - id: dsh-remote
-      name: "dsh-remote-harness"
-      config:
-        port: 8790
-```
-
-方式 B · **一键脚本**（把插件复制到 `~/.dsh/plugins/dsh-remote` 并自动改 profile）：
+**方式 C · 一键脚本**（适合本地开发，把插件复制到 `~/.dsh/plugins/dsh-remote`）：
 
 ```powershell
-node plugin/scripts/install.mjs --dry-run   # 预览改动（默认 dry-run）
-node plugin/scripts/install.mjs --yes       # 应用
+node plugin/scripts/install.mjs --dry-run
+node plugin/scripts/install.mjs --yes
 # 卸载：node plugin/scripts/uninstall.mjs --yes
 ```
+
+> 不要同时使用 B/C：两种方式都会插入 `dsh-remote` 行，重复 id 会冲突。切换到 GUI/npm 方式前先运行 `uninstall.mjs --yes` 移除脚本安装。
 
 重启 DSH（或等待配置热加载）后：
 
@@ -257,6 +254,21 @@ node tools/verify/protocol-client.mjs --url http://127.0.0.1:8790 --code 123456 
 | APK | 包名 `dev.dsh.remote`、cleartext、arm64-v8a + x86_64、图标校验通过 | [app-build-report.md](docs/verification/app-build-report.md) |
 | 模拟器全链路 | 配对 → 会话 → 历史 → 发送 → 工具卡/流式 → 停止 → **PONG** | [app-emulator-report.md](docs/verification/app-emulator-report.md) |
 
+## 远程访问（公网）
+
+插件 **0.1.3** 起内置 Cloudflare Tunnel：
+
+```yaml
+- id: dsh-remote
+  config:
+    port: 8790
+    cloudflare:
+      enabled: true
+      mode: quick          # 随机 https://xxx.trycloudflare.com；长期用 named + token + hostname
+```
+
+配对页会出现「公网访问」卡片和第二个二维码，手机不在同一局域网也能连。也支持 `publicUrl` 静态地址（Caddy/Nginx/frp），或直接用 Tailscale 组网。详见 [docs/remote-access.md](docs/remote-access.md)。
+
 ## 安全
 
 - 仅监听局域网；配对码一次性、10 分钟 TTL、连续失败锁定；
@@ -281,6 +293,7 @@ node tools/verify/protocol-client.mjs --url http://127.0.0.1:8790 --code 123456 
 - [docs/build-android.md](docs/build-android.md) — 构建 APK（含 Windows 坑）
 - [docs/app-architecture.md](docs/app-architecture.md) — App 模块边界与 store 契约
 - [docs/publishing-npm.md](docs/publishing-npm.md) — 发布 `dsh-remote-harness` 到 npm（含 Actions）
+- [docs/remote-access.md](docs/remote-access.md) — 公网访问：Cloudflare Tunnel / Caddy / Tailscale
 - [docs/verification/README.md](docs/verification/README.md) — 验证索引
 
 ## License

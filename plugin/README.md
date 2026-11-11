@@ -15,20 +15,14 @@ A paired Android phone gets the session list, live streaming chat, tool calls, a
 
 ## 安装
 
-### 1) 作为 npm 包装进 DSH profile
+### 1) 在 DSH 桌面里安装（推荐）
+
+DSH → **插件 → 添加插件** → 输入 `dsh-remote-harness`。本包声明了 `dsh.bundle`，安装后随 DSH 启动自动加载，无需运行脚本。
+
+或在命令行安装：
 
 ```bash
 dsh plugin --profile desktop add dsh-remote-harness
-```
-
-然后在 `~/.dsh/profiles/desktop/cordis.patch.yml` 的 `insert` 列表里加入：
-
-```yaml
-- insert:
-    - id: dsh-remote
-      name: "dsh-remote-harness"
-      config:
-        port: 8790
 ```
 
 ### 2) 或用自带安装脚本（复制到 `<DSH_HOME>/plugins/dsh-remote` 并自动打 patch）
@@ -58,6 +52,22 @@ npx dsh-remote-pair --home ~/.dsh      # 终端里打印配对信息 / 二维码
 | `pairingTtlMs` | `600000` | 配对码有效期（10 分钟） |
 | `deviceTtlDays` | `30` | 设备 token 有效期 |
 | `logLevel` | `info` | `debug` / `info` / `warn` / `error` / `silent` |
+| `cloudflare` | 关 | `{ enabled: true, mode: "quick" }` 或 `{ mode: "named", token, hostname }` |
+| `publicUrl` | 无 | 静态公网根地址（Caddy/Nginx/其他隧道） |
+| `uiEntry` | `true` | 是否在 DSH Web UI 注入「远程控制」浮动按钮 |
+
+## 中小规模远程访问
+
+```yaml
+- id: dsh-remote
+  config:
+    port: 8790
+    cloudflare:
+      enabled: true
+      mode: quick
+```
+
+`/v1/health` 返回 `publicUrl` 与 `tunnel` 状态；配对页展示公网地址与二维码。详见仓库 `docs/remote-access.md`。
 
 ## 接口
 

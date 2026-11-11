@@ -79,6 +79,9 @@ export function renderPairingPage(input) {
   .card { background: #fff; border: 1px solid #e3e6ea; border-radius: 16px; padding: 24px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
   .qr { display: flex; justify-content: center; }
   .qr svg { width: 260px; height: 260px; }
+  .qr.small svg { width: 180px; height: 180px; }
+  .public .sub { color: #5b626b; }
+  .public code { word-break: break-all; }
   .code { margin-top: 12px; text-align: center; }
   .code .label { display: block; font-size: 13px; color: #5b626b; letter-spacing: .08em; text-transform: uppercase; }
   .code strong { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 44px; letter-spacing: .18em; }
@@ -122,6 +125,15 @@ export function renderPairingPage(input) {
     </p>
     ${locked ? '<p class="lock">尝试次数过多，已临时锁定 / Too many failed attempts. Locked for <span id="lock-countdown">' + escapeHtml(String(lockedSeconds)) + "</span>s.</p>" : ""}
   </section>
+
+  ${input.publicUrl ? '<h2>公网访问 / Public access</h2>' +
+  '<section class="card public">' +
+  '<p class="sub" style="margin:0 0 12px">Cloudflare 隧道 / Tunnel: <code>' + escapeHtml(input.publicUrl) + '</code></p>' +
+  (input.publicQrSvg ? '<div class="qr small">' + input.publicQrSvg + '</div>' : '') +
+  '<p class="tip">mode: ' + escapeHtml(String(input.tunnel?.mode ?? 'static')) +
+  ' · status: ' + escapeHtml(input.tunnel?.running === true ? 'running' : (input.tunnel?.error ? 'error: ' + input.tunnel.error : 'configured')) + '</p>' +
+  '<p class="tip">在外网用手机 App 扫描上面的二维码，或手动输入公网地址 + 6 位配对码。</p>' +
+  '</section>' : ''}
 
   <h2>配对步骤 / How to pair</h2>
   <section class="card">

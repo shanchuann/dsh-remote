@@ -1,0 +1,9 @@
+# dsh-remote bundle layer: one LAN remote-access bridge row.
+# Installed through the DSH Plugins page (Add plugin) or
+# `dsh plugin --profile <name> add dsh-remote-harness`.
+# Edit the port below in your profile's cordis.patch.yml with a later layer.
+- insert:
+    - id: dsh-remote
+      name: 'dsh-remote-harness'
+      config:
+        port: 8790

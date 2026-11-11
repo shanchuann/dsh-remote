@@ -36,3 +36,7 @@ Thumbs.db
 .node-shim/
 
 .release-notes-*.md
+
+tools/bin/
+.recon*/
+.edge-*/

@@ -20,9 +20,11 @@ import {
 } from "../state/config.mjs";
 import { loadHostState } from "../state/host.mjs";
 import { PLUGIN_ROOT, pluginDataPaths, pluginDataPathsIn, resolveDshHome } from "../state/paths.mjs";
+import { CloudflareTunnel } from "./cloudflare.mjs";
 import { createRemoteServer } from "./server.mjs";
 import { RemoteService } from "./service.mjs";
 import { EventHub } from "./sse.mjs";
+import { renderRemoteEntryScript } from "./ui-entry.mjs";
 
 /** How often the pairing code is checked for expiry (it rotates itself). */
 const PAIRING_REFRESH_MS = 15000;
@@ -60,7 +62,8 @@ export async function createRemoteRuntime(options) {
     bindAddress: config.host,
     artifacts: null,
     timer: null,
-    refreshChain: Promise.resolve()
+    refreshChain: Promise.resolve(),
+    tunnel: null
   };
   let refreshArtifactsHook = null;
 
@@ -101,17 +104,33 @@ export async function createRemoteRuntime(options) {
     }
   }
 
+  function publicUrl() {
+    return config.publicUrl ?? state.tunnel?.snapshot().publicUrl ?? null;
+  }
+
+  function tunnelSnapshot() {
+    return state.tunnel === null ? null : state.tunnel.snapshot();
+  }
+
   function renderPage() {
     const snapshot = pairing.snapshot();
     const endpoints = pairingEndpoints(state.port, interfaces);
+    const hostName = hostDisplayName();
     const uri = pairingUri({
       baseUrl: endpoints.baseUrl,
       code: snapshot.code,
       hostId: hostState.hostId,
-      hostName: hostDisplayName()
+      hostName
+    });
+    const publicBase = publicUrl();
+    const publicUri = publicBase === null ? null : pairingUri({
+      baseUrl: publicBase,
+      code: snapshot.code,
+      hostId: hostState.hostId,
+      hostName
     });
     return renderPairingPage({
-      hostName: hostDisplayName(),
+      hostName,
       hostId: hostState.hostId,
       port: state.port,
       protocol: PROTOCOL_VERSION,
@@ -119,6 +138,9 @@ export async function createRemoteRuntime(options) {
       pairing: snapshot,
       qrSvg: qrSvg(uri, { cellSize: 6, margin: 4, scalable: true }),
       addresses: endpoints.addresses,
+      publicUrl: publicBase,
+      publicQrSvg: publicUri === null ? null : qrSvg(publicUri, { cellSize: 5, margin: 4, scalable: true }),
+      tunnel: tunnelSnapshot(),
       devices: devices.list(),
       now: now()
     });
@@ -174,6 +196,14 @@ export async function createRemoteRuntime(options) {
     get pairingArtifacts() {
       return state.artifacts;
     },
+    /** External root the phone can reach, if a tunnel/public URL is active. */
+    get publicUrl() {
+      return publicUrl();
+    },
+    /** Cloudflare tunnel facts (null when not configured). */
+    get tunnelStatus() {
+      return tunnelSnapshot();
+    },
 
     /** Number of paired phones currently holding an SSE connection. */
     mobileClientCount() {
@@ -221,6 +251,17 @@ export async function createRemoteRuntime(options) {
         }
       }, PAIRING_REFRESH_MS);
       state.timer.unref?.();
+      if (config.cloudflare !== null) {
+        state.tunnel = new CloudflareTunnel({
+          config: config.cloudflare,
+          port: state.port,
+          logger,
+          onUrlChange: () => {
+            if (refreshArtifactsHook !== null) refreshArtifactsHook();
+          }
+        });
+        await state.tunnel.start();
+      }
       const endpoints = pairingEndpoints(state.port, interfaces);
       const displayUrl = endpoints.addresses[0]?.url ?? "http://127.0.0.1:" + state.port;
       logger.info("dsh remote: " + displayUrl + " (pair code " + pairing.snapshot().code + ")");
@@ -240,6 +281,7 @@ export async function createRemoteRuntime(options) {
         pairing: snapshot,
         now: now(),
         interfaces,
+        publicUrl: publicUrl(),
         deviceCount: devices.size
       });
       state.artifacts = artifacts;
@@ -266,6 +308,10 @@ export async function createRemoteRuntime(options) {
       }
       refreshArtifactsHook = null;
       state.listening = false;
+      if (state.tunnel !== null) {
+        await state.tunnel.stop().catch((error) => logger.warn("dsh remote: stopping cloudflared failed: " + error.message));
+        state.tunnel = null;
+      }
       await state.refreshChain;
       await service.dispose().catch((error) => logger.warn("dsh remote: disposing subscriptions failed: " + error.message));
       hub.stop();
@@ -273,6 +319,35 @@ export async function createRemoteRuntime(options) {
       await http.close().catch((error) => logger.warn("dsh remote: closing listener failed: " + error.message));
     }
   };
+
+  service.publicUrlProvider = () => runtime.publicUrl;
+  service.tunnelProvider = () => runtime.tunnelStatus;
+
+  // Desktop/web entry: inject a floating "远程控制" button into the DSH index.
+  const hostContext = settings.ctx;
+  if (config.uiEntry && hostContext !== undefined && typeof hostContext.inject === "function") {
+    try {
+      hostContext.inject(["webServer"], (webCtx) => {
+        try {
+          webCtx.on("webserver/index-inject", (table) => {
+            table.push({
+              kind: "global",
+              name: "__DSH_REMOTE__",
+              value: {
+                pairUrl: "http://127.0.0.1:" + state.port + "/pair",
+                publicUrl: runtime.publicUrl
+              }
+            });
+            table.push({ kind: "script", placement: "body", text: renderRemoteEntryScript() });
+          });
+        } catch (error) {
+          logger.warn("dsh remote: cannot inject the web entry: " + (error?.message ?? error));
+        }
+      });
+    } catch (error) {
+      logger.warn("dsh remote: cannot register the web entry: " + (error?.message ?? error));
+    }
+  }
 
   if (settings.bridge !== undefined && settings.bridge !== null) {
     service.attachBridge(settings.bridge);
