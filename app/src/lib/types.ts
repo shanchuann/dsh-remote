@@ -407,6 +407,17 @@ export interface Approval {
 /** Answers accepted by POST /v1/approvals/:id. */
 export type ApprovalDecision = 'allow' | 'reject';
 
+/** An image queued for the next prompt (protocol 3.8 content block). */
+export interface PromptImage {
+  id: string;
+  name?: string;
+  mediaType: string;
+  /** Base64 without the data: prefix. */
+  data: string;
+  /** Local preview URI (never sent to the host). */
+  uri?: string;
+}
+
 /** POST /v1/sessions/:id/prompt payload (protocol 3.8). */
 export interface PromptPayload {
   requestId: string;

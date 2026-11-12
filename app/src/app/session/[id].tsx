@@ -29,7 +29,7 @@ import {
 } from "../../components/chat";
 import type { MessageScrollerHandle } from "../../components/message-scroller";
 import { useRemoteStore } from "../../lib/store";
-import type { ModelSelection } from "../../lib/types";
+import type { ModelSelection, PromptImage } from "../../lib/types";
 import { buildTranscript } from "../../lib/transcript";
 
 /** Resolves expo-router's string | string[] param into a plain id. */
@@ -128,12 +128,12 @@ export default function SessionScreen() {
     if (pickerOpen && !models) void actions.loadModels();
   }, [actions, models, pickerOpen]);
 
-  const send = (text: string) => {
+  const send = (text: string, images?: PromptImage[]) => {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed && (images === undefined || images.length === 0)) return;
     setDraft("");
     listRef.current?.scrollToEnd();
-    void actions.sendPrompt(trimmed);
+    void actions.sendPrompt(trimmed, { images });
   };
 
   const pickSuggestion = (text: string) => {
@@ -176,6 +176,14 @@ export default function SessionScreen() {
 
   const showSkeleton = loading && items.length === 0;
   const showEmpty = !loading && !running && items.length === 0;
+
+  // A freshly opened session must start at the newest message, and a finished
+  // load must settle there even when the list mounted before its content.
+  useEffect(() => {
+    if (loading || !sessionId) return;
+    const timer = setTimeout(() => listRef.current?.scrollToEnd(false), 0);
+    return () => clearTimeout(timer);
+  }, [loading, sessionId]);
 
   return (
     <View className="flex-1 bg-background">
@@ -246,15 +254,17 @@ export default function SessionScreen() {
             onReject={() => answer("reject")}
           />
         ) : null}
-        <Composer
-          value={draft}
-          onValueChange={setDraft}
-          onSend={send}
-          onStop={() => void actions.cancel()}
-          running={running}
-          disabled={!sessionId || connection.status !== "connected"}
-          placeholder={running ? "运行中，点右侧停止…" : "给 DSH 发消息…"}
-        />
+        {showSkeleton ? null : (
+          <Composer
+            value={draft}
+            onValueChange={setDraft}
+            onSend={send}
+            onStop={() => void actions.cancel()}
+            running={running}
+            disabled={!sessionId || connection.status !== "connected"}
+            placeholder={running ? "运行中，点右侧停止…" : "给 DSH 发消息…"}
+          />
+        )}
       </KeyboardAvoider>
       <ModelPicker
         visible={pickerOpen}

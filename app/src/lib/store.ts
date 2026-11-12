@@ -61,6 +61,7 @@ import type {
   ModelCatalog,
   ModelSelection,
   PendingUser,
+  PromptImage,
   SessionEventPayload,
   SessionRow,
   SessionStatePayload,
@@ -95,7 +96,7 @@ export interface RemoteActions {
   /** Page backwards through the open session's history (protocol 3.6). */
   loadOlderHistory(): Promise<void>;
   closeSession(): Promise<void>;
-  sendPrompt(text: string, options?: { mode?: 'queue' | 'steer' }): Promise<void>;
+  sendPrompt(text: string, options?: { mode?: 'queue' | 'steer'; images?: PromptImage[] }): Promise<void>;
   cancel(): Promise<void>;
   answerApproval(id: string, decision: ApprovalDecision): Promise<void>;
   selectModel(selection: ModelSelection): Promise<void>;
@@ -721,11 +722,17 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
 
     async sendPrompt(text, options) {
       const trimmed = (text ?? '').trim();
-      if (!trimmed) return;
+      const images = options?.images ?? [];
+      if (!trimmed && images.length === 0) return;
       const sessionId = get().current.sessionId;
       if (!sessionId) throw new Error('尚未打开会话');
       const requestId = randomUuid();
-      const pending: PendingUser = { requestId, text: trimmed, time: Date.now(), status: 'sending' };
+      const pending: PendingUser = {
+        requestId,
+        text: trimmed || '（图片 ×' + images.length + '）',
+        time: Date.now(),
+        status: 'sending',
+      };
       set((state) => ({
         current: {
           ...state.current,
@@ -739,7 +746,15 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
       const basePayload = {
         requestId,
         mode,
-        content: [{ type: 'text' as const, text: trimmed }],
+        content: [
+          ...(trimmed ? [{ type: 'text' as const, text: trimmed }] : []),
+          ...images.map((image) => ({
+            type: 'image' as const,
+            mediaType: image.mediaType,
+            data: image.data,
+            ...(image.name ? { name: image.name } : {}),
+          })),
+        ],
       };
       try {
         await active.prompt(sessionId, { ...basePayload, ...(clientTimeZone ? { clientTimeZone } : {}) });

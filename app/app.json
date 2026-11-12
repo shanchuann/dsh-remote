@@ -2,7 +2,7 @@
   "expo": {
     "name": "DSH Remote",
     "slug": "dsh-remote",
-    "version": "0.1.6",
+    "version": "0.1.7",
     "scheme": "dshremote",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -56,6 +56,12 @@
             "backgroundColor": "#0e0f13",
             "imageWidth": 180
           }
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "选择图片作为附件发送给 DSH"
         }
       ]
     ]

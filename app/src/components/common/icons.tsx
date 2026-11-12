@@ -35,3 +35,4 @@ export const ChatIcon = fromFeather('message-circle');
 export const WifiIcon = fromFeather('wifi');
 export const ClockIcon = fromFeather('clock');
 export const DocsIcon = fromFeather('file-text');
+export const ImageIcon = fromFeather('image');

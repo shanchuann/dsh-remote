@@ -118,6 +118,7 @@ export function MessageScroller({
   }, [fade, scrolled]);
   const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
   const { color: foreground } = useResolveClassNames("text-foreground");
+  const [overflow, setOverflow] = useState(false);
 
   // The message count when you last left the end.
   const [leftAt, setLeftAt] = useState(messageCount ?? 0);
@@ -149,9 +150,7 @@ export function MessageScroller({
     if (!followOutput) setFollowing(false);
   }, [followOutput, setFollowing]);
 
-  const overflowing = () =>
-    metrics.current.content > metrics.current.viewport + 1;
-  const showPill = showJump && !following && overflowing();
+  const showPill = showJump && !following && overflow;
   const unread =
     messageCount === undefined ? 0 : Math.max(0, messageCount - leftAt);
   const pillLabel =
@@ -160,10 +159,18 @@ export function MessageScroller({
       : jumpLabel;
 
   useEffect(() => {
-    jump.value = reduce
-      ? withTiming(showPill ? 1 : 0, { duration: 120 })
-      : withSpring(showPill ? 1 : 0, SPRING_LAYOUT);
+    // Timing (not spring) keeps the pill's exit crisp while the list scrolls.
+    jump.value = withTiming(showPill ? 1 : 0, { duration: reduce ? 0 : 160 });
   }, [jump, reduce, showPill]);
+
+  // A newly mounted conversation starts at the newest message, even before the
+  // first content-size callback arrives.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (followingRef.current) scrollRef.current?.scrollToEnd({ animated: false });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
 
   const settle = (released: boolean) => {
     const { offset, content, viewport } = metrics.current;
@@ -194,10 +201,15 @@ export function MessageScroller({
         keyboardShouldPersistTaps="handled"
         onLayout={({ nativeEvent }) => {
           metrics.current.viewport = nativeEvent.layout.height;
+          setOverflow(metrics.current.content > metrics.current.viewport + 1);
+          if (followingRef.current) {
+            setTimeout(() => scrollRef.current?.scrollToEnd({ animated: false }), 0);
+          }
         }}
         onContentSizeChange={(width, height) => {
           const first = metrics.current.content === 0;
           metrics.current.content = height;
+          setOverflow(height > metrics.current.viewport + 1);
           // Never pull against a finger; letting go decides whether to follow.
           if (followingRef.current && !userScrolling.current) {
             scrollRef.current?.scrollToEnd({
@@ -267,7 +279,7 @@ export function MessageScroller({
             importantForAccessibility={
               showPill ? "auto" : "no-hide-descendants"
             }
-            onPress={() => scrollToEnd()}
+            onPress={() => scrollToEnd(false)}
             onPressIn={() => {
               if (!reduce) jumpPress.value = withSpring(0.94, SPRING_PRESS);
             }}
