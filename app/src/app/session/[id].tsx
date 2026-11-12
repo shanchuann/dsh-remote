@@ -181,8 +181,17 @@ export default function SessionScreen() {
   // load must settle there even when the list mounted before its content.
   useEffect(() => {
     if (loading || !sessionId) return;
-    const timer = setTimeout(() => listRef.current?.scrollToEnd(false), 0);
-    return () => clearTimeout(timer);
+    let cancelled = false;
+    const stamps = [0, 120, 320, 700];
+    const timers = stamps.map((delay) =>
+      setTimeout(() => {
+        if (!cancelled && followingRef.current) listRef.current?.scrollToEnd(false);
+      }, delay),
+    );
+    return () => {
+      cancelled = true;
+      timers.forEach((timer) => clearTimeout(timer));
+    };
   }, [loading, sessionId]);
 
   return (

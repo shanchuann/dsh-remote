@@ -13,6 +13,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useResolveClassNames, useUniwind } from 'uniwind';
 
@@ -33,8 +34,9 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: background }}>
-      <SafeAreaProvider>
+    <KeyboardProvider>
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: background }}>
+        <SafeAreaProvider>
         <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
         <Stack
           screenOptions={{
@@ -49,7 +51,8 @@ export default function RootLayout() {
           <Stack.Screen name="pair" options={{ animation: 'fade' }} />
           <Stack.Screen name="session/[id]" options={{ headerShown: false }} />
         </Stack>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </KeyboardProvider>
   );
 }

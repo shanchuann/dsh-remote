@@ -163,14 +163,24 @@ export function MessageScroller({
     jump.value = withTiming(showPill ? 1 : 0, { duration: reduce ? 0 : 160 });
   }, [jump, reduce, showPill]);
 
-  // A newly mounted conversation starts at the newest message, even before the
-  // first content-size callback arrives.
+  // Chat history settles in several layout passes (images, tool cards, code
+  // highlighting). Keep jumping to the end while still following so a long
+  // session never stays parked at its oldest message.
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (followingRef.current) scrollRef.current?.scrollToEnd({ animated: false });
-    }, 0);
-    return () => clearTimeout(timer);
-  }, []);
+    let cancelled = false;
+    let attempts = 0;
+    const jump = () => {
+      if (cancelled || !followingRef.current) return;
+      scrollRef.current?.scrollToEnd({ animated: false });
+      attempts += 1;
+      if (attempts < 8) setTimeout(jump, 150);
+    };
+    const timer = setTimeout(jump, 30);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [messageCount]);
 
   const settle = (released: boolean) => {
     const { offset, content, viewport } = metrics.current;
