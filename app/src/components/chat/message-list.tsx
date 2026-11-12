@@ -1,4 +1,4 @@
-import type { Ref } from "react";
+import { memo, useMemo, type Ref } from "react";
 import { Pressable, Text, View } from "react-native";
 
 import { MessageTyping } from "../message";
@@ -27,6 +27,60 @@ export type MessageListProps = {
   onRetryPending?: (text: string) => void;
   ref?: Ref<MessageScrollerHandle>;
 };
+
+function sameItem(a: TranscriptItem, b: TranscriptItem): boolean {
+  if (a === b) return true;
+  if (a.kind !== b.kind || a.id !== b.id) return false;
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  switch (a.kind) {
+    case "assistant":
+      return (
+        left.text === right.text &&
+        left.reasoning === right.reasoning &&
+        left.streaming === right.streaming
+      );
+    case "user":
+      return (
+        left.text === right.text &&
+        left.pending === right.pending &&
+        left.time === right.time &&
+        left.images === right.images
+      );
+    case "tool":
+      return (
+        left.name === right.name &&
+        left.status === right.status &&
+        left.result === right.result &&
+        left.input === right.input
+      );
+    case "todo":
+      return JSON.stringify(left.todo) === JSON.stringify(right.todo);
+    case "approval":
+      return (
+        (left.approval as { outcome?: unknown })?.outcome ===
+          (right.approval as { outcome?: unknown })?.outcome &&
+        (left.approval as { decision?: unknown })?.decision ===
+          (right.approval as { decision?: unknown })?.decision
+      );
+    default:
+      return left.time === right.time;
+  }
+}
+
+const TranscriptRow = memo(
+  function TranscriptRow({
+    item,
+    onRetryPending,
+  }: {
+    item: TranscriptItem;
+    onRetryPending?: (text: string) => void;
+  }) {
+    return renderItem(item, onRetryPending);
+  },
+  (prev, next) =>
+    prev.onRetryPending === next.onRetryPending && sameItem(prev.item, next.item),
+);
 
 function renderItem(
   item: TranscriptItem,
@@ -66,12 +120,16 @@ export function MessageList({
   onRetryPending,
   ref,
 }: MessageListProps) {
-  const visible = items.filter((item) => {
-    if (item.kind === "turn") return showTurns;
-    // Undecided approvals are answered in the blocking sheet above the composer.
-    if (item.kind === "approval") return item.approval.outcome !== undefined;
-    return true;
-  });
+  const visible = useMemo(
+    () =>
+      items.filter((item) => {
+        if (item.kind === "turn") return showTurns;
+        // Undecided approvals are answered in the blocking sheet above the composer.
+        if (item.kind === "approval") return item.approval.outcome !== undefined;
+        return true;
+      }),
+    [items, showTurns],
+  );
   const last = visible[visible.length - 1];
   const typing = running && !streaming && !(last?.kind === "assistant" && last.streaming);
 
@@ -101,7 +159,9 @@ export function MessageList({
           </Pressable>
         </View>
       ) : null}
-      {visible.map((item) => renderItem(item, onRetryPending))}
+      {visible.map((item) => (
+        <TranscriptRow key={item.id} item={item} onRetryPending={onRetryPending} />
+      ))}
       {typing ? (
         <View className="px-4 py-2">
           <MessageTyping label="正在回复" />

@@ -12,13 +12,7 @@ import { Button } from '../components/button';
 import { AppButton } from '../components/common/app-button';
 import { ConnectionBadge } from '../components/common/connection-badge';
 import { ErrorBanner } from '../components/common/error-banner';
-import {
-  ChevronLeftIcon,
-  PowerIcon,
-  RefreshIcon,
-  ScanIcon,
-  TrashIcon,
-} from '../components/common/icons';
+import { PowerIcon, RefreshIcon, ScanIcon, TrashIcon } from '../components/common/icons';
 import { ScreenFrame, ScreenTitle, SectionCard } from '../components/common/screen';
 import { appVersion } from '../lib/config';
 import { describeError } from '../lib/errors';
@@ -138,19 +132,7 @@ export default function SettingsScreen() {
 
   return (
     <ScreenFrame>
-      <ScreenTitle
-        title="设置"
-        subtitle="连接、设备与版本信息"
-        left={
-          <Button
-            size="icon"
-            variant="ghost"
-            icon={ChevronLeftIcon}
-            accessibilityLabel="返回"
-            onPress={() => router.back()}
-          />
-        }
-      />
+      <ScreenTitle title="设置" subtitle="连接、设备与版本信息" />
 
       <ScrollView contentContainerClassName="gap-4 px-5 pb-12" showsVerticalScrollIndicator={false}>
         {connection.needsPairing ? (

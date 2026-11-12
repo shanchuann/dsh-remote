@@ -2,7 +2,7 @@
   "expo": {
     "name": "DSH Remote",
     "slug": "dsh-remote",
-    "version": "0.1.5",
+    "version": "0.1.6",
     "scheme": "dshremote",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -41,6 +41,20 @@
         {
           "android": {
             "usesCleartextTraffic": true
+          }
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 180,
+          "resizeMode": "contain",
+          "backgroundColor": "#FFFFFF",
+          "dark": {
+            "image": "./assets/images/deepseek-whale-white.png",
+            "backgroundColor": "#0e0f13",
+            "imageWidth": 180
           }
         }
       ]

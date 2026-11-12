@@ -85,18 +85,20 @@ function tokenize(code: string, language: CodeLanguage) {
 export function useCodeTokens(
   code: string,
   language: CodeLanguage,
+  highlight = true,
 ): CodeTokenLines {
   const { theme } = useUniwind();
   const colors = theme === "dark" ? PALETTES.dark : PALETTES.light;
-  return useMemo(
-    () =>
-      tokenize(code, language).map((line) =>
-        line.map(([content = "", ...types]) => {
-          let color: string | undefined;
-          for (const type of types) color = colors.get(type) ?? color;
-          return { content, color };
-        }),
-      ),
-    [code, colors, language],
-  );
+  return useMemo(() => {
+    // While code streams in, every chunk would re-tokenize the whole snippet.
+    // Plain lines keep the UI responsive; the finished block is highlighted once.
+    if (!highlight) return code.split("\n").map((line) => [{ content: line }]);
+    return tokenize(code, language).map((line) =>
+      line.map(([content = "", ...types]) => {
+        let color: string | undefined;
+        for (const type of types) color = colors.get(type) ?? color;
+        return { content, color };
+      }),
+    );
+  }, [code, colors, highlight, language]);
 }

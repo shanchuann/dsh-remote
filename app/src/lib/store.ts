@@ -147,6 +147,31 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
   // next open() is a reconnect that must re-open the active session.
   let streamOpened = false;
 
+  // Assistant deltas arrive per model chunk. Coalescing them into one state
+  // update every ~50ms keeps the JS thread free for scrolling and taps.
+  let assistantFrames: { sessionId: string; frame: AssistantPayload['frame'] }[] = [];
+  let assistantTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function flushAssistantFrames(): void {
+    if (assistantTimer !== undefined) {
+      clearTimeout(assistantTimer);
+      assistantTimer = undefined;
+    }
+    if (assistantFrames.length === 0) return;
+    const frames = assistantFrames;
+    assistantFrames = [];
+    set((state) => {
+      let streaming = state.current.streaming;
+      let changed = false;
+      for (const item of frames) {
+        if (item.sessionId !== state.current.sessionId) continue;
+        streaming = applyAssistantFrame(streaming, item.frame);
+        changed = true;
+      }
+      return changed ? { current: { ...state.current, streaming } } : {};
+    });
+  }
+
   function detachClient(): void {
     for (const unsubscribe of unsubscribers) {
       try {
@@ -214,6 +239,9 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
   function applySessionEvent(payload: SessionEventPayload): void {
     const event = payload?.event;
     if (!event || typeof event.type !== 'string') return;
+    // Deltas buffered behind a session event must land first so the final
+    // assistant/message never races ahead of text that belongs before it.
+    flushAssistantFrames();
     set((state) => {
       if (state.current.sessionId !== payload.sessionId) return {};
       const runningHint = runningFromEvent(event);
@@ -238,16 +266,14 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
 
   function applyAssistant(payload: AssistantPayload): void {
     const frame = payload?.frame;
-    if (!frame || typeof frame.type !== 'string') return;
-    set((state) => {
-      if (state.current.sessionId !== payload.sessionId) return {};
-      return {
-        current: {
-          ...state.current,
-          streaming: applyAssistantFrame(state.current.streaming, frame),
-        },
-      };
-    });
+    if (!frame || typeof frame.type !== 'string' || typeof payload?.sessionId !== 'string') return;
+    assistantFrames.push({ sessionId: payload.sessionId, frame });
+    if (assistantTimer === undefined) {
+      assistantTimer = setTimeout(() => {
+        assistantTimer = undefined;
+        flushAssistantFrames();
+      }, 50);
+    }
   }
 
   function applySessionState(payload: SessionStatePayload): void {
@@ -562,6 +588,7 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
     },
 
     async disconnect() {
+      flushAssistantFrames();
       const sessionId = get().current.sessionId;
       const active = client;
       if (active && sessionId) {
@@ -613,6 +640,7 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
     },
 
     async openSession(id) {
+      flushAssistantFrames();
       const active = requireClient();
       const row = get().sessions.find((item) => item.sessionId === id);
       const previousId = get().current.sessionId;
@@ -678,6 +706,7 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
     },
 
     async closeSession() {
+      flushAssistantFrames();
       const sessionId = get().current.sessionId;
       const active = client;
       if (active && sessionId) {

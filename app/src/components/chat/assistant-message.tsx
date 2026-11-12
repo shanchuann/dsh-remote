@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { Text, View } from "react-native";
+import { View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -12,7 +12,8 @@ import type { TranscriptItem } from "../../lib/transcript";
 import { CodeBlock } from "../code-block";
 import { StreamingResponse } from "../streaming-response";
 import { ReasoningBlock } from "./reasoning-block";
-import { splitFencedCode, splitInlineCode } from "./format";
+import { splitFencedCode } from "./format";
+import { MarkdownText } from "./markdown";
 
 export type AssistantMessageItem = Extract<TranscriptItem, { kind: "assistant" }>;
 
@@ -33,33 +34,7 @@ function StreamingCaret() {
   );
 }
 
-/** Prose with inline code kept monospace, preserving the reply's line breaks. */
-function Prose({ text, muted = false }: { text: string; muted?: boolean }) {
-  const segments = useMemo(() => splitInlineCode(text), [text]);
-  return (
-    <Text
-      selectable
-      className={
-        muted
-          ? "text-[13px] leading-5 text-muted"
-          : "text-[15px] leading-[24px] text-foreground"
-      }
-    >
-      {segments.map((segment, index) =>
-        segment.kind === "code" ? (
-          <Text
-            key={index}
-            className="font-mono text-[13px] text-foreground/90"
-          >
-            {segment.text}
-          </Text>
-        ) : (
-          <Text key={index}>{segment.text}</Text>
-        ),
-      )}
-    </Text>
-  );
-}
+/** Prose rendered as markdown (headings, lists, emphasis, links, inline code). */
 
 /**
  * One assistant turn: folded reasoning, prose, fenced code blocks and a live
@@ -93,7 +68,7 @@ export function AssistantMessage({ item }: { item: AssistantMessageItem }) {
                 showLineNumbers={segment.code.split("\n").length > 2}
               />
             ) : (
-              <Prose key={"text-" + index} text={segment.text} />
+              <MarkdownText key={"text-" + index} text={segment.text} />
             ),
           )}
           {streaming ? <StreamingCaret /> : null}

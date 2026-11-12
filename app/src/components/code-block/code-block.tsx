@@ -145,7 +145,7 @@ export function CodeBlock({
   const reducedMotion = useReducedMotionPreference();
   const reduce = reducedMotion || disableAnimation;
   const streaming = status === "streaming";
-  const lines = useCodeTokens(code, language);
+  const lines = useCodeTokens(code, language, !streaming);
   const [wrap, setWrap] = useState(initialWrap);
   const [copied, setCopied] = useState(false);
   const [viewport, setViewport] = useState(0);
