@@ -8,10 +8,13 @@
  */
 
 import { ApiError } from './errors';
+import { fetchText } from './http';
 import { normalizeBaseUrl } from './pairing';
 import { buildEventsUrl, SseConnection } from './sse';
 import type { SseMessage } from './sse-parser';
 import type {
+  WorkspaceChangeSummary,
+  WorkspaceDiff,
   Approval,
   ApprovalDecision,
   AssistantPayload,
@@ -34,6 +37,7 @@ import type {
   SessionStatePayload,
   SessionStatusPayload,
   SnapshotPayload,
+  SubscriptionClosedPayload,
   SseErrorPayload,
 } from './types';
 import { PROTOCOL_VERSION } from './types';
@@ -66,6 +70,7 @@ export interface ClientEvents {
   hello: HelloPayload;
   /** Server rejected the device token (HTTP 401 or SSE error unauthorized). */
   unauthorized: undefined;
+  subscriptionClosed: SubscriptionClosedPayload;
 }
 
 type Handler<K extends keyof ClientEvents> = (payload: ClientEvents[K]) => void;
@@ -151,21 +156,13 @@ export class RemoteClient {
       headers['Content-Type'] = 'application/json; charset=utf-8';
       payload = JSON.stringify(body);
     }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-    let response: Response;
-    try {
-      response = await this.fetchImpl(url, { method, headers, body: payload, signal: controller.signal });
-    } catch (error) {
-      const aborted = controller.signal.aborted;
-      throw new ApiError(0, aborted ? 'timeout' : 'network', aborted ? '请求超时' : '网络请求失败', error);
-    } finally {
-      clearTimeout(timer);
-    }
-
-    if (response.status === 401) this.emit('unauthorized', undefined);
-
-    const text = await response.text();
+    const { response, text } = await fetchText(this.fetchImpl, url, { method, headers, body: payload }, this.timeoutMs,
+      (response) => {
+        if (response.status === 401 || response.status === 403) {
+          this.emit('unauthorized', undefined);
+          throw new ApiError(response.status, 'unauthorized', '认证已失效，请重新配对');
+        }
+      });
     if (!response.ok) {
       let code = 'internal';
       let message = 'HTTP ' + response.status;
@@ -211,23 +208,11 @@ export class RemoteClient {
       ...(options.appVersion ? { appVersion: options.appVersion } : {}),
     };
     const fetchImpl = options.fetchImpl ?? ((input, init) => fetch(input, init));
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-    let response: Response;
-    try {
-      response = await fetchImpl(url, {
+    const { response, text } = await fetchText(fetchImpl, url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json; charset=utf-8', Accept: 'application/json' },
         body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-    } catch (error) {
-      const aborted = controller.signal.aborted;
-      throw new ApiError(0, aborted ? 'timeout' : 'network', aborted ? '配对请求超时' : '无法连接 Host', error);
-    } finally {
-      clearTimeout(timer);
-    }
-    const text = await response.text();
+      }, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
     let parsed: Record<string, unknown> | null = null;
     try {
       parsed = text ? (JSON.parse(text) as Record<string, unknown>) : null;
@@ -289,6 +274,16 @@ export class RemoteClient {
       'GET',
       '/v1/sessions/' + encodeURIComponent(id) + '/history' + (query.length ? '?' + query.join('&') : ''),
     );
+  }
+
+  changes(id: string, seq: number): Promise<WorkspaceChangeSummary> {
+    return this.request('GET', '/v1/sessions/' + encodeURIComponent(id) + '/changes/' + seq);
+  }
+  diff(id: string, seq: number, index: number): Promise<WorkspaceDiff> {
+    return this.request('GET', '/v1/sessions/' + encodeURIComponent(id) + '/changes/' + seq + '/' + index);
+  }
+  readFile(id: string, path: string): Promise<{ text: string; eof?: boolean; path?: string }> {
+    return this.request('GET', '/v1/sessions/' + encodeURIComponent(id) + '/file?format=text&path=' + encodeURIComponent(path));
   }
 
   /** POST /v1/sessions/:id/open — subscribes the SSE stream to this session. */
@@ -458,6 +453,10 @@ export class RemoteClient {
         return;
       }
       case 'subscription.closed':
+        if (typeof payload.sessionId === 'string' && typeof payload.subscriptionId === 'string') {
+          this.emit('subscriptionClosed', payload as unknown as SubscriptionClosedPayload);
+        }
+        return;
       case 'ping':
       case 'connection.replaced':
       default:

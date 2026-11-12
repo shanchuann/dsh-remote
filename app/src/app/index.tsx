@@ -53,9 +53,10 @@ export default function ConnectScreen() {
     return parsePairingUri(
       'dshremote://pair?u=' +
         encodeURIComponent(u) +
-        (typeof params.c === 'string' ? '&c=' + encodeURIComponent(params.c) : ''),
+        (typeof params.c === 'string' ? '&c=' + encodeURIComponent(params.c) : '') +
+        (typeof params.alt === 'string' ? '&alt=' + encodeURIComponent(params.alt) : ''),
     );
-  }, [params.c, params.u]);
+  }, [params.alt, params.c, params.u]);
 
   const [phase, setPhase] = useState<'restoring' | 'form'>('restoring');
   const [baseUrl, setBaseUrl] = useState(initialPairing?.baseUrl ?? '');
@@ -67,12 +68,19 @@ export default function ConnectScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const scannedRef = useRef(false);
   const submittingRef = useRef(false);
+  const restoringRef = useRef<Promise<boolean> | null>(null);
 
   // Restore a saved pairing once per launch.
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      const restored = await useRemoteStore.getState().actions.restore();
+      if (initialPairing?.baseUrl && initialPairing.code) {
+        setPhase('form');
+        return;
+      }
+      const request = useRemoteStore.getState().actions.restore();
+      restoringRef.current = request;
+      const restored = await request;
       if (cancelled) return;
       if (restored) {
         router.replace('/sessions');
@@ -89,7 +97,7 @@ export default function ConnectScreen() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initialPairing?.baseUrl, initialPairing?.code]);
 
   const submit = useCallback(
     async (override?: { baseUrl?: string; altBaseUrl?: string; code?: string }) => {
@@ -99,7 +107,8 @@ export default function ConnectScreen() {
       // A pasted pairing URI carries both the host address and the code.
       const parsed = rawBase.toLowerCase().startsWith('dshremote:') ? parsePairingUri(rawBase) : null;
       const targetBase = parsed?.baseUrl ?? tryNormalizeBaseUrl(rawBase) ?? '';
-      const targetAlt = parsed?.altBaseUrl;
+      const targetAlt = parsed?.altBaseUrl ?? override?.altBaseUrl ??
+        (targetBase === initialPairing?.baseUrl ? initialPairing.altBaseUrl : undefined);
       const targetCode = rawCode || parsed?.code || '';
       if (!targetBase) {
         setError('请输入 Host 地址，例如 http://192.168.1.23:8790');
@@ -122,7 +131,7 @@ export default function ConnectScreen() {
         setBusy(false);
       }
     },
-    [baseUrl, code, connect, deviceName],
+    [baseUrl, code, connect, deviceName, initialPairing],
   );
 
   // A deep-link pairing payload (forwarded by src/app/pair.tsx) connects
@@ -131,16 +140,21 @@ export default function ConnectScreen() {
   useEffect(() => {
     const u = typeof params.u === 'string' ? params.u : undefined;
     const c = typeof params.c === 'string' ? params.c : undefined;
-    if (!u || !c) return;
-    const key = u + '|' + c;
+    if (!u || !c || phase === 'restoring') return;
+    const key = u + '|' + c + '|' + (params.alt ?? '');
     if (autoPairRef.current === key) return;
-    autoPairRef.current = key;
+    let cancelled = false;
     // Defer so the connect screen can paint before the pairing request starts.
     const timer = setTimeout(() => {
-      void submit({ baseUrl: u, altBaseUrl: typeof params.alt === 'string' ? params.alt : undefined, code: c });
+      void (async () => {
+        await restoringRef.current;
+        if (cancelled) return;
+        autoPairRef.current = key;
+        await submit({ baseUrl: u, altBaseUrl: typeof params.alt === 'string' ? params.alt : undefined, code: c });
+      })();
     }, 0);
-    return () => clearTimeout(timer);
-  }, [params.alt, params.c, params.u, submit]);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [params.alt, params.c, params.u, phase, submit]);
 
   const openScanner = useCallback(() => {
     scannedRef.current = false;
@@ -180,7 +194,7 @@ export default function ConnectScreen() {
         <View className="flex-1 items-center justify-center gap-5 px-8">
           <BrandMark size={72} />
           <Text className="text-2xl font-semibold text-foreground">DSH Remote</Text>
-          <LoadingView label="正在恢复连接…" />
+          <LoadingView label="正在恢复连接…" fill={false} />
         </View>
       </ScreenFrame>
     );
@@ -193,11 +207,11 @@ export default function ConnectScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
-          contentContainerClassName="px-5 pb-10"
+          contentContainerClassName="px-4 pb-8"
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View className="items-center gap-3 pb-7 pt-10">
+          <View className="items-center gap-3 pb-6 pt-6">
             <BrandMark />
             <Text className="text-[28px] font-semibold leading-8 text-foreground">DSH Remote</Text>
             <Text className="max-w-[300px] text-center text-sm leading-5 text-muted">
@@ -205,7 +219,7 @@ export default function ConnectScreen() {
             </Text>
           </View>
 
-          <View className="gap-4 rounded-3xl border border-border bg-surface p-4">
+          <View className="gap-4 rounded-2xl border border-border bg-surface p-4">
             <View className="flex-row items-center gap-2">
               <ServerIcon size={16} color={typeof mutedColor === 'string' ? mutedColor : undefined} />
               <Text className="text-sm font-medium text-foreground">连接 Host</Text>
@@ -264,8 +278,8 @@ export default function ConnectScreen() {
             </View>
           </View>
 
-          <Text className="mt-6 text-center text-[11px] text-muted/70">
-            协议 v1 · 局域网直连 · 不经过云端
+          <Text className="mt-5 text-center text-xs leading-[18px] text-muted">
+            支持局域网直连与公网连接
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>

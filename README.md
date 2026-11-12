@@ -1,4 +1,4 @@
-# DSH Remote · 手机直连你的 DeepSeek Harness
+# 手机直连你的 DeepSeek Harness
 
 <div align="center">
 
@@ -7,12 +7,9 @@
   <img src="app/assets/images/deepseek-whale.png" width="96" alt="DSH Remote" />
 </picture>
 <br/>
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="app/assets/images/deepseek-wordmark-white.png" />
-  <img src="app/assets/images/deepseek-wordmark.png" width="240" alt="DeepSeek" />
-</picture>
+<h2>DSH Remote</h2>
 
-**用手机继续电脑上的 DeepSeek Harness 会话 —— 局域网直连，不经过云端。**
+**用手机继续电脑上的 DeepSeek Harness 会话，支持局域网直连与公网连接。**
 
 [![DSH](https://img.shields.io/badge/DeepSeek%20Harness-0.2.2--rc.1-4D6BFE)](https://github.com/shanchuann/dsh-remote-)
 [![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)]()
@@ -32,9 +29,9 @@
 | 组件 | 说明 |
 |---|---|
 | **Host 插件**（[`plugin/`](plugin/)） | 跑在 DeepSeek Harness 进程内，暴露局域网 HTTP + SSE；调用 DSH 的 `sessionController`，转发会话、流式输出、工具调用、审批与模型选择。**零运行时依赖**（只用 `node:` 内置 + 一个 vendored QR 编码器）。 |
-| **Android App**（[`app/`](app/)） | React Native（Expo SDK 58）+ [beUI Native](https://beui.dev) 组件；扫码/手动配对、会话列表、流式聊天、工具卡、审批、模型切换、断线重连。图标与文字标识来自 [`deepseek-whale.png`](app/assets/images/deepseek-whale.png) / [`deepseek-wordmark.png`](app/assets/images/deepseek-wordmark.png)（[`deepseek.svg`](deepseek.svg) 为原始矢量）。 |
+| **Android App**（[`app/`](app/)） | React Native（Expo SDK 58）+ [beUI Native](https://beui.dev) 组件；扫码/手动配对、会话列表、流式聊天、工具卡、审批、模型切换、断线重连。鲸鱼图标来自 [`deepseek-whale.png`](app/assets/images/deepseek-whale.png)，应用名称使用 **DSH Remote**（[`deepseek.svg`](deepseek.svg) 为原始矢量）。 |
 
-> 所有流量只走你的局域网：手机 → 电脑 `LAN:8790`。没有中转服务器，没有账号体系，会话与凭据都留在本机。
+> 默认通过局域网直连电脑 `LAN:8790`，也可使用插件配置的公网地址。没有独立账号体系，会话保存在电脑，设备凭据保存在手机。
 
 ## 功能
 
@@ -49,7 +46,8 @@
 - 断线指数退避重连，重连后自动重新订阅当前会话
 
 **会话**
-- 最近会话列表（标题、时间、运行状态、工作目录）
+- 按项目展示主对话，展开项目查看标题、时间与运行状态
+- 子智能体在对话页的专用入口查看，不混入项目主对话列表
 - 打开会话即加载历史快照，自动跟随新消息
 - 新建会话、重命名、切换模型（含 reasoning effort）
 
@@ -124,6 +122,12 @@ flowchart LR
 dsh plugin --profile desktop add dsh-remote-harness
 ```
 
+Android 0.1.15 的配套插件为 0.1.14。也可从 [发布附件](https://github.com/shanchuann/dsh-remote/releases/tag/android-v0.1.15) 下载 `dsh-remote-harness-0.1.14.tgz`，在下载目录安装：
+
+```bash
+dsh plugin --profile desktop add ./dsh-remote-harness-0.1.14.tgz --offline
+```
+
 **方式 C · 一键脚本**（适合本地开发，把插件复制到 `~/.dsh/plugins/dsh-remote`）：
 
 ```powershell
@@ -151,7 +155,7 @@ cd android && ./gradlew assembleRelease
 # 产物：app/build/outputs/apk/release/app-release.apk
 ```
 
-或直接下载已构建的 release APK：[GitHub Releases](https://github.com/shanchuann/dsh-remote-/releases)（v0.1.0 附带 `dsh-remote-0.1.0-release.apk`）。
+或直接下载已构建的 [Android 0.1.15 APK](https://github.com/shanchuann/dsh-remote/releases/download/android-v0.1.15/dsh-remote-0.1.15-release.apk)，配套插件 0.1.14 也在 [GitHub Releases](https://github.com/shanchuann/dsh-remote/releases/latest) 提供。
 
 环境：Node 20+、JDK 17+、Android SDK（platform 36 / build-tools 36）。Windows 下有两个已知构建坑，见 [docs/build-android.md](docs/build-android.md)。
 
@@ -282,12 +286,26 @@ node tools/verify/protocol-client.mjs --url http://127.0.0.1:8790 --code 123456 
 
 ## 已知限制 / Roadmap
 
-- [ ] v1 仅文本输入（协议已预留图片 content blocks）
+- [x] 文本、图片及 Android 本地语音转文字输入
 - [ ] `ask_user_question` 的手机端回答面板（工具审批已支持）
-- [ ] 会话搜索、子 Agent 视图
+- [x] 按桌面项目分组、完整项目清单与子 Agent 视图
+- [x] 普通工具与 PTC 工具结果、网页来源、任务面板、文件改动及交付图片
+- [ ] 会话搜索
 - [ ] 推送通知（审批 / 完成）
 - [ ] PWA 版（复用同一协议）
 - [ ] 内置 TLS / 反向代理辅助
+
+### 本地语音与工作流适配
+
+Android 0.1.15 配合插件 0.1.14：进入「设置 → 本地语音输入」下载并校验约 241 MB 模型，可选择官方源或国内镜像。回到对话点击麦克风，完成录音后在手机 CPU 上识别；文字填入草稿，编辑确认后再发送。支持自动、普通话、粤语、英语、日语和韩语，单次最多 90 秒；离开应用或会话会取消当前语音输入。
+
+与当前 DSH 桌面相同的 SenseVoiceSmall INT8 + Silero VAD 模型，通过 sherpa-onnx Android 原生运行，录音不上传。构建先执行 `npm --prefix app run voice:prepare` 下载并校验固定版本的原生依赖；模型由设置页下载，不打入 APK。模型和依赖清单见 [本轮验证记录](docs/verification/mobile-workflow-2026-11-12.md)。
+
+对话现在默认停在最新消息，只保留一个「加载更早的消息」入口。网页工具可展开查看 Markdown、来源和结果图片；任务面板同步普通 Todo 与团队任务。文件改动按原始快照显示 diff，回复中的文件和图片支持手机预览及系统分享。若桌面已释放历史改动快照，会明确说明无法还原，不使用当前文件伪造旧 diff。
+
+聊天页顶部使用原生模糊和渐变遮罩。输入区透明，只保留胶囊边框；任务列表在独立的滚动边界内裁切，与输入框保持间距。输入框在系统底部安全区上方额外留出 12dp，键盘出现时保留 12dp 间隔；输入时任务面板暂时收为摘要，键盘关闭后恢复原来的展开状态。验证见 [聊天布局记录](docs/verification/chat-chrome-2026-11-13.md)。
+
+桌面的自动化配置、插件管理、`ask_user_question` 回答面板、完整文件编辑与 Git 操作尚未移植；本轮不代表全部桌面功能已覆盖。
 
 ## 协议 / 文档索引
 

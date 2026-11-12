@@ -8,6 +8,8 @@ import { useMemo } from "react";
 import { useUniwind } from "uniwind";
 
 export type CodeLanguage =
+  | "diff"
+  | "patch"
   | "bash"
   | "css"
   | "go"

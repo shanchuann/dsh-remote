@@ -39,3 +39,11 @@ test('keeps fences out and plain paragraphs intact', () => {
   const blocks = parseMarkdownBlocks('第一段\n\n# 标题\n\n> 引用');
   assert.deepEqual(blocks.map((block) => block.type), ['paragraph', 'heading', 'quote']);
 });
+
+test('nested emphasis, escaped syntax, ordered starts and code fences', () => {
+ const spans=parseInlineMarkdown('**粗体与 *斜体***，file_name.ts');
+ assert.ok(spans.some(x=>x.bold&&x.italic));
+ assert.ok(spans.map(x=>x.text).join('').includes('file_name.ts'));
+ assert.equal(parseMarkdownBlocks('3. third\n4. fourth')[0].start,3);
+ assert.equal(parseMarkdownBlocks('~~~diff\n-old\n+new\n~~~')[0].type,'code');
+});

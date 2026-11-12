@@ -22,6 +22,28 @@ export function emptyStreaming(): StreamingState {
   return { text: '', reasoning: '', active: false };
 }
 
+/** Rebuild the compact prefix DSH supplies when joining an in-flight attempt. */
+export function streamingFromSnapshot(value: unknown): StreamingState {
+  if (!isObject(value) || !isObject(value.activeAttempt)) return emptyStreaming();
+  const attempt = value.activeAttempt;
+  if (typeof attempt.attemptId !== 'string' || !Array.isArray(attempt.stream)) return emptyStreaming();
+  let state: StreamingState = { ...emptyStreaming(), attemptId: attempt.attemptId, active: true };
+  let remaining = typeof attempt.nextIndex === 'number' ? attempt.nextIndex : Number.MAX_SAFE_INTEGER;
+  for (const record of attempt.stream) {
+    if (!isObject(record) || remaining <= 0) continue;
+    if (record.type === 'chunk') {
+      state = applyAssistantFrame(state, { type: 'chunk', attemptId: attempt.attemptId, chunk: record.chunk } as AssistantStreamFrame);
+      remaining--;
+    } else if (record.type === 'text-chunks' || record.type === 'reasoning-chunks') {
+      if (!Array.isArray(record.texts)) continue;
+      const text = record.texts.slice(0, remaining).filter((part): part is string => typeof part === 'string').join('');
+      state = { ...state, ...(record.type === 'text-chunks' ? { text: state.text + text } : { reasoning: state.reasoning + text }) };
+      remaining -= record.texts.length;
+    } else if (record.type === 'tool-call-chunks' && Array.isArray(record.args)) remaining -= record.args.length;
+  }
+  return state;
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -168,6 +190,12 @@ export function mergeEventLists(first: SessionEvent[], second: SessionEvent[]): 
   return merged;
 }
 
+/** History pages move backwards from the oldest rendered event, not the live cursor. */
+export function historyBoundary(events: SessionEvent[], fallback?: number | null): number | null {
+  const sequences = events.map((event) => event.seq).filter((seq): seq is number => typeof seq === 'number' && Number.isFinite(seq));
+  return sequences.length > 0 ? Math.min(...sequences) : typeof fallback === 'number' ? fallback : null;
+}
+
 /** Insert or replace an approval request. */
 export function mergeApproval(list: Approval[], approval: Approval): Approval[] {
   if (!isObject(approval) || typeof approval.id !== 'string') return list;
@@ -206,8 +234,8 @@ export function applySessionStatus(rows: SessionRow[], status: { sessionId?: str
   const next = rows.slice();
   next[index] = {
     ...rows[index],
-    running: status.running === true,
-    active: status.active !== false,
+    ...(typeof status.running === 'boolean' ? { running: status.running } : {}),
+    ...(typeof status.active === 'boolean' ? { active: status.active } : {}),
   };
   return next;
 }
@@ -235,6 +263,23 @@ export function titleFromEvent(event: SessionEvent | null | undefined): string |
   if (!isEventLike(event) || event.type !== 'session/title' || !isObject(event.data)) return undefined;
   const title = event.data.title;
   return typeof title === 'string' && title.trim() !== '' ? title : undefined;
+}
+
+export function cwdFromEvent(event: SessionEvent | null | undefined): string | undefined {
+  if (!isEventLike(event) || event.type !== 'working-directory/change' || !isObject(event.data)) return undefined;
+  return typeof event.data.cwd === 'string' && event.data.cwd.trim() ? event.data.cwd : undefined;
+}
+
+/** Keep project rows in sync with the same events rendered in the chat. */
+export function applySessionEventToRows(rows: SessionRow[], sessionId: string, event: SessionEvent): SessionRow[] {
+  const title = titleFromEvent(event);
+  const model = modelFromEvent(event);
+  const cwd = cwdFromEvent(event);
+  if (title === undefined && model === undefined && cwd === undefined) return rows;
+  return rows.map((row) => row.sessionId === sessionId ? {
+    ...row, ...(title === undefined ? {} : { title }), ...(model === undefined ? {} : { model }),
+    ...(cwd === undefined ? {} : { cwd }),
+  } : row);
 }
 
 /** Model selection carried by a model/selection event. */

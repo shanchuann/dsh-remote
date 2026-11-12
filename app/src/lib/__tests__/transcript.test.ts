@@ -364,6 +364,17 @@ test("appends live streaming text as a trailing streaming assistant item", () =>
   }
 });
 
+test("preserves the last fragment after stream end without a live cursor", () => {
+  const items = buildTranscript([], { attemptId: "ended", text: "保留回复", reasoning: "分析", active: false });
+  const item = items[0];
+  assert.equal(item?.kind, "assistant");
+  if (item?.kind === "assistant") {
+    assert.equal(item.text, "保留回复");
+    assert.equal(item.reasoning, "分析");
+    assert.equal(item.streaming, false);
+  }
+});
+
 test("does not duplicate the final assistant text when streaming is stale", () => {
   const items = buildTranscript(
     events(
@@ -734,4 +745,14 @@ test("a failed pending bubble keeps its failed state for a retry hint", () => {
   const item = items[0];
   assert.equal(item?.kind, "user");
   if (item?.kind === "user") assert.equal(item.pending, true);
+});
+
+
+test('image-only pending and confirmed echoes retain upload previews',()=>{
+ const image={mediaType:'image/png',data:'AAAA'};
+ const pending={requestId:'photo',text:'（图片）',images:[image]};
+ const first=buildTranscript([],undefined,{pending:[pending]});assert.equal(first[0].kind,"user"); assert.deepEqual((first[0] as Extract<TranscriptItem,{kind:"user"}>).images,[image]);
+ const confirmed=buildTranscript([{type:'user/message',seq:1,data:{id:'echo',source:{kind:'user',rpcId:'photo'},content:[{type:'image',attachment:{id:'sha256:abc'}}]}}],undefined,{imagePreviews:{photo:[image]}});
+ assert.deepEqual((confirmed[0] as Extract<TranscriptItem,{kind:"user"}>).images,[image]);
+ const source=buildTranscript([{type:'user/message',seq:1,data:{source:{kind:'user'},content:[{type:'image',source:{data:'AAAA',media_type:'image/png'}}]}}]);assert.equal((source[0] as Extract<TranscriptItem,{kind:"user"}>).images?.[0].mediaType,'image/png');
 });

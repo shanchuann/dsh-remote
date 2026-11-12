@@ -38,6 +38,10 @@ try {
   $env:ANDROID_HOME = $env:ANDROID_HOME ?? 'D:\Android\Sdk'
   $env:ANDROID_SDK_ROOT = $env:ANDROID_SDK_ROOT ?? $env:ANDROID_HOME
 
+  Write-Host '== verified local speech runtime'
+  npm run voice:prepare
+  if ($LASTEXITCODE -ne 0) { throw 'Speech runtime download or verification failed' }
+
   Write-Host '== expo prebuild (regenerates android/ from app.json)'
   npx expo prebuild --platform android --clean --no-install
 

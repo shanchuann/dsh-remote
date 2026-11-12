@@ -277,11 +277,17 @@ export class RemoteService {
       });
     }
     const nextCursor = asString(result?.nextCursor, MAX_CURSOR_LENGTH) ?? null;
-    return { items, nextCursor };
+    const workspaces = Array.isArray(result?.workspaces)
+      ? result.workspaces.filter((workspace) => isRecord(workspace) && typeof workspace.id === "string" && typeof workspace.path === "string")
+        .map(({ id, title, path }) => ({ id, title: typeof title === "string" ? title : undefined, path }))
+      : undefined;
+    return { items, nextCursor, ...(workspaces ? { workspaces } : {}) };
   }
 
   async createSession(body) {
     const options = {};
+    if (body?.workspaceId !== undefined && body?.cwd !== undefined) throw apiError('invalid-argument', 'Specify workspaceId or cwd, not both');
+    if (body?.workspaceId !== undefined) options.workspaceId = requireString(body.workspaceId, 'workspaceId', 200);
     if (body?.cwd !== undefined) options.cwd = requireString(body.cwd, "cwd", 1024);
     if (body?.agentPreset !== undefined) options.agentPreset = requireString(body.agentPreset, "agentPreset", 120);
     const result = await this.#call(() => this.bridge.createSession(options), "create session");
@@ -318,6 +324,25 @@ export class RemoteService {
       cursor,
       hasMore: Boolean(result?.hasMore)
     };
+  }
+
+  async changes(sessionId, seqValue, indexValue) {
+    const id = requireString(sessionId, 'sessionId', 200);
+    const seq = Number(seqValue), index = indexValue === undefined ? undefined : Number(indexValue);
+    if (!Number.isSafeInteger(seq) || seq < 0 || (index !== undefined && (!Number.isSafeInteger(index) || index < 0))) {
+      throw apiError('invalid-argument', 'Invalid change sequence or file index');
+    }
+    return this.#call(() => this.bridge.changes(id, seq, index), 'workspace changes');
+  }
+
+  async readFile(sessionId, query) {
+    const id = requireString(sessionId, 'sessionId', 200);
+    const rawPath = queryValue(query, 'path');
+    if (typeof rawPath === 'string' && rawPath.length > 4096) throw apiError('invalid-argument', 'File path is too long');
+    const path = requireString(rawPath, 'path', 4096);
+    if (path.includes('\0')) throw apiError('invalid-argument', 'Invalid file path');
+    const format = queryValue(query, 'format') === 'text' ? 'text' : 'bytes';
+    return this.#call(() => this.bridge.readFile(id, path, format), 'workspace file');
   }
 
   async open(deviceId, sessionId, body) {
@@ -666,7 +691,8 @@ export class RemoteService {
       records: Array.isArray(snapshot.records) ? snapshot.records : [],
       hasMore: Boolean(snapshot.hasMore),
       cursor: asNonNegativeInt(snapshot.cursor) ?? null,
-      projections: isRecord(snapshot.projections) ? snapshot.projections : null
+      projections: isRecord(snapshot.projections) ? snapshot.projections : null,
+      assistantStream: snapshot.assistantStream ?? null
     };
   }
 

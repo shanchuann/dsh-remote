@@ -2,7 +2,7 @@ import { type ColorValue, Modal, Pressable, ScrollView, Text, View } from "react
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResolveClassNames } from "uniwind";
 
-import { ThinkingShimmer } from "../loading-states";
+import { SkeletonBlock, SkeletonGroup } from "../common/skeleton";
 import { CheckGlyph, CrossGlyph } from "../../primitives/agent-icons";
 import type { ModelChoice, ModelGroup, ModelSelectionLike } from "./models";
 import { selectionKey } from "./models";
@@ -55,16 +55,16 @@ export function ModelPicker({
           className="max-h-[78%] overflow-hidden rounded-t-3xl bg-background"
           style={{ paddingBottom: insets.bottom + 8 }}
         >
+          <View className="mb-1 mt-3 h-1 w-8 self-center rounded-full bg-border-strong" />
           <View className="flex-row items-center px-4 pb-1 pt-3">
-            <Text className="flex-1 text-[15px] font-semibold text-foreground">
+            <Text className="flex-1 text-base font-semibold leading-6 text-foreground">
               选择模型
             </Text>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="关闭"
-              hitSlop={10}
               onPress={onClose}
-              className="size-8 items-center justify-center rounded-full active:bg-surface"
+              className="size-12 items-center justify-center rounded-full active:bg-surface"
             >
               <CrossGlyph size={16} color={muted} />
             </Pressable>
@@ -75,11 +75,9 @@ export function ModelPicker({
             contentContainerClassName="pb-2"
           >
             {loading && empty ? (
-              <View className="items-center py-10">
-                <ThinkingShimmer className="text-sm text-muted">
-                  正在读取模型列表…
-                </ThinkingShimmer>
-              </View>
+              <SkeletonGroup className="gap-6 px-4 py-5">
+                {[0, 1, 2].map((id) => <View key={id} className="gap-2"><SkeletonBlock className="h-4 w-1/2" /><SkeletonBlock className="h-3 w-4/5" /></View>)}
+              </SkeletonGroup>
             ) : empty ? (
               <View className="px-4 py-8">
                 <Text className="text-center text-sm text-muted">

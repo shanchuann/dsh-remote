@@ -96,7 +96,8 @@ export function tryNormalizeBaseUrl(input: string | undefined | null): string | 
   // A pasted "/v1" (API root) or "/pair" (host pairing page) is a common slip.
   path = path.replace(/\/v1$/i, '').replace(/\/pair$/i, '');
   path = path.replace(/\/+$/, '');
-  const host = url.hostname.includes(':') ? '[' + url.hostname + ']' : url.hostname;
+  if (path) return null;
+  const host = url.hostname.includes(':') && !url.hostname.startsWith('[') ? '[' + url.hostname + ']' : url.hostname;
   return url.protocol + '//' + host + (url.port ? ':' + url.port : '') + path;
 }
 

@@ -177,6 +177,7 @@ export async function createRemoteRuntime(options) {
     protocolVersion: PROTOCOL_VERSION,
     pluginVersion,
     renderPairingPage: () => renderPage(),
+    attachmentsRoot: resolve(resolveDshHome(config.dshHome), "attachments", "v1", "objects"),
     logger,
     now,
     rateLimit: settings.rateLimit,

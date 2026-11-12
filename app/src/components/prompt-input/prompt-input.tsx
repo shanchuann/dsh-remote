@@ -215,6 +215,8 @@ export type PromptInputProps = Omit<
   restoreOnStop?: boolean;
   /** Lines the field grows to before scrolling. Defaults to 6. */
   maxRows?: number;
+  /** Keep controls beside the text as it grows, preserving the capsule outline. */
+  layout?: "adaptive" | "capsule";
   /** Extra controls beside the + button once the composer opens up. */
   leadingAction?: ReactNode;
   disabled?: boolean;
@@ -248,6 +250,7 @@ export function PromptInput({
   onStop,
   restoreOnStop = true,
   maxRows = 6,
+  layout = "adaptive",
   leadingAction,
   disabled = false,
   className = "",
@@ -284,7 +287,7 @@ export function PromptInput({
   const hasMenu = actions.length > 0 || models.length > 0;
   // One line sits in the pill; a second line opens it into a card.
   const multiline = inlineHeight > LINE_HEIGHT * 1.5;
-  const expanded = multiline || attachments.length > 0;
+  const expanded = layout === "adaptive" && (multiline || attachments.length > 0);
   const contentHeight = expanded ? wideHeight : inlineHeight;
   const fieldHeight = Math.min(
     maxRows * LINE_HEIGHT,
@@ -488,10 +491,10 @@ export function PromptInput({
 
   return (
     <Animated.View
-      layout={reduce ? undefined : GLIDE}
+      layout={reduce || layout === "capsule" ? undefined : GLIDE}
       onLayout={({ nativeEvent }) => setWidth(nativeEvent.layout.width)}
       style={[styles.surface, expanded ? styles.card : styles.pill]}
-      className={`bg-surface ${disabled ? "opacity-60" : ""} ${className}`}
+      className={`${layout === "capsule" ? "bg-transparent" : "bg-surface"} ${disabled ? "opacity-60" : ""} ${className}`}
     >
       {attachments.length > 0 ? (
         <View style={styles.attachments}>

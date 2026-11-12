@@ -1,168 +1,42 @@
-/** Pure markdown parsing shared by the React renderer and node tests. */
-export type MarkdownInline = {
-  text: string;
-  bold?: boolean;
-  italic?: boolean;
-  code?: boolean;
-  strike?: boolean;
-  href?: string;
-  image?: string;
-};
-
-export type MarkdownListItem = { text: string; checked?: boolean };
-
+import { Lexer, type Token, type Tokens } from 'marked';
+export type MarkdownInline = { text: string; bold?: boolean; italic?: boolean; code?: boolean; strike?: boolean; href?: string; image?: string };
+export type MarkdownListItem = { text: string; checked?: boolean; children?: MarkdownBlock[] };
 export type MarkdownBlock =
-  | { type: 'paragraph'; text: string }
-  | { type: 'heading'; level: number; text: string }
-  | { type: 'list'; ordered: boolean; items: MarkdownListItem[] }
-  | { type: 'quote'; text: string }
-  | { type: 'table'; headers: string[]; rows: string[][] }
-  | { type: 'hr' };
-
-const SPECIAL = /[*`_[~!]/;
-const TABLE_PIPE = /[|\uFF5C]/; // | or full-width ｜
-
-function pushInline(out: MarkdownInline[], span: MarkdownInline) {
-  if (span.text.length > 0 || span.image !== undefined) out.push(span);
+ | { type: 'paragraph'; text: string }
+ | { type: 'heading'; level: number; text: string }
+ | { type: 'list'; ordered: boolean; start?: number; items: MarkdownListItem[] }
+ | { type: 'quote'; text: string }
+ | { type: 'table'; headers: string[]; rows: string[][] }
+ | { type: 'code'; text: string; language?: string }
+ | { type: 'hr' };
+const entities: Record<string,string> = {amp:'&',lt:'<',gt:'>',quot:'"',apos:"'",nbsp:' '};
+function decode(text:string):string { return text.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (raw,key:string)=> {if(!key.startsWith('#')) return entities[key.toLowerCase()] ?? raw; const n=key[1].toLowerCase()==='x'?parseInt(key.slice(2),16):Number(key.slice(1)); return n>0&&n<=0x10ffff?String.fromCodePoint(n):raw;}); }
+export function parseInlineMarkdown(text:string):MarkdownInline[] {
+ const out:MarkdownInline[]=[];
+ function walk(tokens:Token[],flags:Partial<MarkdownInline>={}) { for(const t of tokens) {
+  if(t.type==='strong'||t.type==='em'||t.type==='del') walk(t.tokens ?? [],{...flags,...(t.type==='strong'?{bold:true}:t.type==='em'?{italic:true}:{strike:true})});
+  else if(t.type==='link') walk(t.tokens ?? [],{...flags,href:t.href});
+  else if(t.type==='image') out.push({...flags,text:decode(t.text),image:t.href});
+  else if(t.type==='codespan') out.push({...flags,text:t.text,code:true});
+  else if(t.type==='br') out.push({...flags,text:'\n'});
+  else if('tokens' in t && t.tokens) walk(t.tokens as Token[],flags);
+  else out.push({...flags,text:decode('text' in t?String(t.text):t.raw)});
+ }}
+ walk(Lexer.lexInline(text,{gfm:true,breaks:false})); return out;
 }
-
-export function parseInlineMarkdown(text: string): MarkdownInline[] {
-  const out: MarkdownInline[] = [];
-  let index = 0;
-  while (index < text.length) {
-    const rest = text.slice(index);
-    let match: RegExpExecArray | null;
-    if ((match = /^`([^`\n]+)`/.exec(rest)) !== null) {
-      pushInline(out, { text: match[1] ?? '', code: true });
-      index += match[0].length;
-      continue;
-    }
-    if ((match = /^!\[([^\]]*)\]\(([^)\s]+)\)/.exec(rest)) !== null) {
-      pushInline(out, { text: match[1] ?? '', image: match[2] });
-      index += match[0].length;
-      continue;
-    }
-    if ((match = /^\[([^\]]+)\]\(([^)\s]+)\)/.exec(rest)) !== null) {
-      pushInline(out, { text: match[1] ?? '', href: match[2] });
-      index += match[0].length;
-      continue;
-    }
-    if ((match = /^\*\*([^*]+)\*\*/.exec(rest)) !== null || (match = /^__([^_]+)__/.exec(rest)) !== null) {
-      pushInline(out, { text: match[1] ?? '', bold: true });
-      index += match[0].length;
-      continue;
-    }
-    if ((match = /^~~([^~]+)~~/.exec(rest)) !== null) {
-      pushInline(out, { text: match[1] ?? '', strike: true });
-      index += match[0].length;
-      continue;
-    }
-    if ((match = /^\*([^*\n]+)\*/.exec(rest)) !== null || (match = /^_([^_\n]+)_/.exec(rest)) !== null) {
-      pushInline(out, { text: match[1] ?? '', italic: true });
-      index += match[0].length;
-      continue;
-    }
-    let next = index + 1;
-    while (next < text.length && !SPECIAL.test(text[next] ?? '')) next += 1;
-    pushInline(out, { text: text.slice(index, next) });
-    index = next;
-  }
-  return out;
-}
-
-const TABLE_SEPARATOR = /^\s*[|\uFF5C]?\s*:?-{2,}:?\s*([|\uFF5C]\s*:?-{2,}:?\s*)*[|\uFF5C]?\s*$/;
-
-export function tableCells(line: string): string[] {
-  let body = line.trim();
-  if (TABLE_PIPE.test(body[0] ?? '')) body = body.slice(1);
-  if (TABLE_PIPE.test(body[body.length - 1] ?? '')) body = body.slice(0, -1);
-  return body.split(TABLE_PIPE).map((cell) => cell.trim());
-}
-
-export function parseMarkdownBlocks(text: string): MarkdownBlock[] {
-  const blocks: MarkdownBlock[] = [];
-  const lines = text.replace(/\r\n/g, '\n').split('\n');
-  let paragraph: string[] = [];
-  let list: { ordered: boolean; items: MarkdownListItem[] } | null = null;
-
-  const flushParagraph = () => {
-    if (paragraph.length === 0) return;
-    blocks.push({ type: 'paragraph', text: paragraph.join('\n') });
-    paragraph = [];
-  };
-  const flushList = () => {
-    if (list === null) return;
-    blocks.push({ type: 'list', ordered: list.ordered, items: list.items });
-    list = null;
-  };
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index] ?? '';
-    if (line.trim().length === 0) {
-      flushParagraph();
-      flushList();
-      continue;
-    }
-    // GFM table: header row followed by a |---| separator row (ASCII or full-width pipes).
-    if (TABLE_PIPE.test(line) && TABLE_SEPARATOR.test(lines[index + 1] ?? '')) {
-      flushParagraph();
-      flushList();
-      const headers = tableCells(line);
-      const rows: string[][] = [];
-      let cursor = index + 2;
-      while (cursor < lines.length && TABLE_PIPE.test(lines[cursor] ?? '')) {
-        rows.push(tableCells(lines[cursor] ?? ''));
-        cursor += 1;
-      }
-      blocks.push({ type: 'table', headers, rows });
-      index = cursor - 1;
-      continue;
-    }
-    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
-    if (heading !== null) {
-      flushParagraph();
-      flushList();
-      blocks.push({ type: 'heading', level: (heading[1] ?? '#').length, text: heading[2] ?? '' });
-      continue;
-    }
-    if (/^\s*([-*_])\1{2,}\s*$/.test(line)) {
-      flushParagraph();
-      flushList();
-      blocks.push({ type: 'hr' });
-      continue;
-    }
-    const quote = /^\s*>\s?(.*)$/.exec(line);
-    if (quote !== null) {
-      flushParagraph();
-      flushList();
-      blocks.push({ type: 'quote', text: quote[1] ?? '' });
-      continue;
-    }
-    const task = /^\s*[-*+]\s+\[([ xX])\]\s+(.*)$/.exec(line);
-    if (task !== null) {
-      flushParagraph();
-      if (list === null || list.ordered) {
-        flushList();
-        list = { ordered: false, items: [] };
-      }
-      list.items.push({ text: task[2] ?? '', checked: (task[1] ?? ' ').toLowerCase() === 'x' });
-      continue;
-    }
-    const item = /^\s*([-*+]|\d+[.)])\s+(.*)$/.exec(line);
-    if (item !== null) {
-      flushParagraph();
-      const ordered = !/^[-*+]$/.test(item[1] ?? '-');
-      if (list === null || list.ordered !== ordered) {
-        flushList();
-        list = { ordered, items: [] };
-      }
-      list.items.push({ text: item[2] ?? '' });
-      continue;
-    }
-    flushList();
-    paragraph.push(line);
-  }
-  flushParagraph();
-  flushList();
-  return blocks;
+export function tableCells(line:string):string[] {return line.trim().replace(/^[|｜]|[|｜]$/g,'').split(/(?<!\\)[|｜]/).map(x=>x.trim().replace(/\\\|/g,'|'));}
+export function parseMarkdownBlocks(text:string):MarkdownBlock[] {
+ const normalized=text.replace(/\r\n/g,'\n').split('\n').map(l=>l.includes('｜')?l.replaceAll('｜','|'):l).join('\n');
+ const blocks:MarkdownBlock[]=[];
+ for(const t of Lexer.lex(normalized,{gfm:true,breaks:false})) {
+  if(t.type==='space') continue;
+  if(t.type==='heading') blocks.push({type:'heading',level:t.depth,text:t.text});
+  else if(t.type==='hr') blocks.push({type:'hr'});
+  else if(t.type==='code') blocks.push({type:'code',text:t.text,language:t.lang});
+  else if(t.type==='blockquote') blocks.push({type:'quote',text:t.text});
+  else if(t.type==='table') blocks.push({type:'table',headers:(t as Tokens.Table).header.map(c=>c.text),rows:(t as Tokens.Table).rows.map(r=>r.map(c=>c.text))});
+  else if(t.type==='list') blocks.push({type:'list',ordered:t.ordered,...(t.ordered?{start:Number(t.start)||1}:{}),items:(t as Tokens.List).items.map(item=>({text:item.text,...(item.task?{checked:item.checked}:{}),...(item.tokens.some(n=>n.type==='list')?{children:parseMarkdownBlocks(item.text)}:{})}))});
+  else if('text' in t) blocks.push({type:'paragraph',text:String(t.text)});
+ }
+ return blocks;
 }

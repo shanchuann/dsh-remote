@@ -70,6 +70,8 @@ export interface TranscriptImage {
   name?: string;
   data?: string;
   url?: string;
+  /** Host-side attachment reference (sha256:...) for images sent from the app. */
+  attachmentId?: string;
 }
 
 export type TranscriptTodoStatus =
@@ -92,11 +94,13 @@ export interface TranscriptPendingUser {
   text: string;
   time?: number;
   status?: "sending" | "failed";
+  images?: TranscriptImage[];
 }
 
 export interface BuildTranscriptOptions {
   /** Optimistic messages rendered after the confirmed ones (deduped by requestId). */
   pending?: TranscriptPendingUser[] | null;
+  imagePreviews?: Record<string, TranscriptImage[]>;
 }
 
 /** One renderable row. */
@@ -108,12 +112,14 @@ export type TranscriptItem =
       images?: TranscriptImage[];
       time: number;
       pending?: boolean;
+      failed?: boolean;
     }
   | {
       kind: "assistant";
       id: string;
       text: string;
       reasoning?: string;
+      images?: TranscriptImage[];
       time: number;
       streaming?: boolean;
     }
@@ -125,10 +131,14 @@ export type TranscriptItem =
       input?: unknown;
       status: "running" | "ok" | "error";
       result?: string;
+      meta?: unknown;
+      images?: TranscriptImage[];
       time: number;
     }
   | { kind: "approval"; id: string; approval: TranscriptApproval }
   | { kind: "turn"; id: string; label: "start" | "end"; time: number }
+  | { kind: "changes"; id: string; seq: number; time: number }
+  | { kind: "deliverables"; id: string; files: { path: string; label?: string }[]; title?: string; time: number }
   | { kind: "todo"; id: string; items: TranscriptTodo[]; time: number };
 
 /* --------------------------------------------------------------- utilities */
@@ -233,12 +243,16 @@ function readParts(content: unknown): ReadParts {
       }
       case "image":
       case "image_url": {
+        const attachment = asRecord(block.attachment);
+        const source = asRecord(block.source);
+        const imageUrl = asRecord(block.image_url);
         result.images.push({
           type: "image",
-          mediaType: asString(block.mediaType) ?? asString(block.mimeType),
-          name: asString(block.name),
-          data: asString(block.data),
-          url: asString(block.url) ?? asString(block.imageUrl),
+          mediaType: asString(block.mediaType) ?? asString(block.mimeType) ?? asString(attachment?.mediaType) ?? asString(source?.media_type) ?? asString(source?.mediaType),
+          name: asString(block.name) ?? asString(attachment?.name),
+          data: asString(block.data) ?? asString(source?.data),
+          url: asString(block.url) ?? asString(block.imageUrl) ?? asString(block.image_url) ?? asString(imageUrl?.url) ?? asString(source?.url),
+          attachmentId: asString(block.attachmentId) ?? asString(attachment?.attachmentId) ?? asString(attachment?.id),
         });
         break;
       }
@@ -258,7 +272,7 @@ function readParts(content: unknown): ReadParts {
           result.toolCalls.push({
             callId,
             name: name ?? "tool",
-            input: block.input ?? block.args ?? block.arguments,
+            input: parseToolInput(block.input ?? block.args ?? block.arguments),
           });
         }
         break;
@@ -301,8 +315,9 @@ function resultText(value: unknown): string | undefined {
     const list = asArray(value)
       .map((entry) => resultText(entry))
       .filter((entry): entry is string => Boolean(entry));
-    return list.length > 0 ? list.join("\n") : direct;
+    return list.length > 0 ? list.join("\n") : "";
   }
+  if (record.type === "image" || record.type === "image_url") return undefined;
   const candidate =
     record.text ??
     record.content ??
@@ -339,7 +354,7 @@ function todoStatus(value: unknown): TranscriptTodoStatus {
 }
 
 /** Normalizes a todo/write payload into rows beUI's TodoList accepts. */
-function readTodos(data: unknown): TranscriptTodo[] {
+export function readTodos(data: unknown): TranscriptTodo[] {
   const record = asRecord(data);
   const rawList = Array.isArray(data)
     ? data
@@ -357,6 +372,7 @@ function readTodos(data: unknown): TranscriptTodo[] {
     const title =
       asString(entry.title) ??
       asString(entry.content) ??
+      asString(entry.subject) ??
       asString(entry.text) ??
       asString(entry.label) ??
       asString(entry.task);
@@ -370,6 +386,11 @@ function readTodos(data: unknown): TranscriptTodo[] {
     });
   });
   return todos;
+}
+
+function parseToolInput(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  try { return JSON.parse(value); } catch { return value; }
 }
 
 function eventTime(event: SessionEventLike): number {
@@ -433,6 +454,7 @@ export function buildTranscript(
   /** rpcIds of confirmed user messages, to drop their optimistic twin. */
   const confirmedRequests = new Set<string>();
   let lastTime = 0;
+  const produced = new Map<string, { path: string; label?: string }>();
 
   const putTool = (tool: ToolItem): void => {
     const existing = toolIndex.get(tool.callId);
@@ -449,7 +471,7 @@ export function buildTranscript(
     name: string,
     input: unknown,
     time: number,
-    patch?: Partial<Pick<ToolItem, "status" | "result">>,
+    patch?: Partial<Pick<ToolItem, "status" | "result" | "images" | "meta">>,
   ): void => {
     const index = toolIndex.get(callId);
     if (index === undefined) {
@@ -461,6 +483,8 @@ export function buildTranscript(
         input,
         status: patch?.status ?? "running",
         result: patch?.result,
+        images: patch?.images,
+        meta: patch?.meta,
         time,
       });
       return;
@@ -473,8 +497,22 @@ export function buildTranscript(
       input: input === undefined ? current.input : input,
       status: patch?.status ?? current.status,
       result: patch?.result ?? current.result,
+      images: patch?.images ?? current.images,
+      meta: patch?.meta ?? current.meta,
       time: current.time || time,
     };
+  };
+
+  const recordProduced = (callId: string) => {
+    const index = toolIndex.get(callId); const tool = index === undefined ? undefined : items[index];
+    if (tool?.kind !== 'tool' || tool.status !== 'ok' || !/^(write|edit|write_file|edit_file)$/i.test(tool.name)) return;
+    const input = asRecord(tool.input); const meta = asRecord(tool.meta);
+    const path = asString(meta?.path) ?? asString(input?.path) ?? asString(input?.file_path);
+    if (path) produced.set(path, { path });
+  };
+  const flushProduced = (time: number, seq: unknown) => {
+    if (produced.size) items.push({ kind: 'deliverables', id: 'produced-' + String(seq ?? items.length), title: '已修改文件', files: [...produced.values()], time });
+    produced.clear();
   };
 
   const lastRunningTool = (): ToolItem | undefined => {
@@ -502,6 +540,7 @@ export function buildTranscript(
           if (!parts.text.trim() && parts.images.length === 0) break;
           const source = asRecord(data.source);
           const rpcId = asString(source?.rpcId);
+          const previews = rpcId ? options?.imagePreviews?.[rpcId] : undefined;
           if (rpcId) confirmedRequests.add(rpcId);
           items.push({
             kind: "user",
@@ -510,7 +549,7 @@ export function buildTranscript(
               rpcId ??
               "user-" + (asNumber(event.seq) ?? items.length),
             text: parts.text,
-            ...(parts.images.length > 0 ? { images: parts.images } : {}),
+            ...(previews?.length ? { images: previews } : parts.images.length > 0 ? { images: parts.images } : {}),
             time,
           });
           break;
@@ -519,7 +558,7 @@ export function buildTranscript(
         case "assistant/message": {
           const message = asRecord(data.message) ?? {};
           const parts = readParts(message.content);
-          if (parts.text || parts.reasoning) {
+          if (parts.text || parts.reasoning || parts.images.length) {
             items.push({
               kind: "assistant",
               id:
@@ -527,6 +566,7 @@ export function buildTranscript(
                 "assistant-" + (asNumber(event.seq) ?? items.length),
               text: parts.text,
               ...(parts.reasoning ? { reasoning: parts.reasoning } : {}),
+              ...(parts.images.length ? { images: parts.images } : {}),
               time,
             });
           }
@@ -542,6 +582,16 @@ export function buildTranscript(
           break;
         }
 
+        case "tool/ptc-dispatch-start":
+        case "tool/ptc-dispatch": {
+          const callId = asString(data.subCallId);
+          if (!callId) break;
+          const parts = readParts(data.content);
+          upsertTool(callId, asString(data.name) ?? 'tool', parseToolInput(data.arguments), time,
+            event.type === 'tool/ptc-dispatch' ? { status: data.isError === true ? 'error' : 'ok', result: resultText(data.content), images: parts.images, meta: data.meta } : undefined);
+          recordProduced(callId);
+          break;
+        }
         case "tool/call": {
           const callId =
             asString(data.callId) ??
@@ -554,7 +604,7 @@ export function buildTranscript(
               asString(data.toolName) ??
               asString(data.tool) ??
               "tool",
-            data.input ?? data.args ?? data.arguments,
+            parseToolInput(data.input ?? data.args ?? data.arguments),
             time,
           );
           break;
@@ -566,6 +616,8 @@ export function buildTranscript(
           const callId =
             asString(data.callId) ??
             asString(data.toolCallId) ??
+            asString(message.toolCallId) ??
+            asString(asRecord(message.source)?.callId) ??
             asString(data.id) ??
             contentParts.toolResults[0]?.callId ??
             lastRunningTool()?.callId;
@@ -575,7 +627,7 @@ export function buildTranscript(
             resultText(data.output) ??
             contentParts.text ??
             "";
-          const isError = data.isError === true || data.error != null;
+          const isError = data.isError === true || message.isError === true || data.error != null;
           const fallbackId =
             "tool-result-" + (asNumber(event.seq) ?? items.length);
           if (!callId) {
@@ -587,6 +639,7 @@ export function buildTranscript(
               name: asString(data.name) ?? "tool",
               status: isError ? "error" : "ok",
               result: text,
+              images: contentParts.images,
               time,
             });
             break;
@@ -594,7 +647,10 @@ export function buildTranscript(
           upsertTool(callId, "tool", undefined, time, {
             status: isError ? "error" : "ok",
             result: text,
+            images: contentParts.images,
+            meta: data.meta,
           });
+          recordProduced(callId);
           break;
         }
 
@@ -669,6 +725,19 @@ export function buildTranscript(
           break;
         }
 
+        case "workspace/changes": {
+          if (typeof event.seq === 'number') items.push({ kind: 'changes', id: 'changes-' + event.seq, seq: event.seq, time });
+          break;
+        }
+        case "deliverables/presented": {
+          const files = asArray(data.files).flatMap((raw) => {
+            const file = asRecord(raw); const path = asString(file?.path);
+            return path ? [{ path, label: asString(file?.label) ?? asString(file?.description) }] : [];
+          });
+          files.forEach(file => produced.delete(file.path));
+          if (files.length) items.push({ kind: 'deliverables', id: 'deliverables-' + (event.seq ?? items.length), files, time });
+          break;
+        }
         case "todo/write": {
           const todos = readTodos(event.data);
           if (todos.length === 0) break;
@@ -688,6 +757,8 @@ export function buildTranscript(
 
         case "turn/start":
         case "turn/end": {
+          if (event.type === "turn/end") flushProduced(time, event.seq);
+          else produced.clear();
           items.push({
             kind: "turn",
             id:
@@ -726,7 +797,7 @@ export function buildTranscript(
         text: streamText,
         ...(streamReasoning ? { reasoning: streamReasoning } : {}),
         time: lastTime,
-        streaming: true,
+        streaming: streaming?.active !== false,
       });
     }
   }
@@ -747,6 +818,8 @@ export function buildTranscript(
       text: pending.text,
       time: asNumber(pending.time) ?? lastTime,
       pending: true,
+      failed: pending.status === 'failed',
+      ...(pending.images?.length ? { images: pending.images } : {}),
     });
   }
 

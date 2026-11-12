@@ -118,7 +118,7 @@ export class DshBridge {
       if (typeof dispose === 'function') this.disposers.push(dispose);
     };
     listen('api-session/added', (summary) => {
-      try { this.handlers.onSessionAdded && this.handlers.onSessionAdded(mapSessionRow(summary)); } catch (error) { this.log('warn', 'onSessionAdded failed', error); }
+      try { this.handlers.onSessionAdded && this.handlers.onSessionAdded(this.mapRow(summary)); } catch (error) { this.log('warn', 'onSessionAdded failed', error); }
     });
     listen('api-session/removed', (sessionId) => {
       try { this.handlers.onSessionRemoved && this.handlers.onSessionRemoved(String(sessionId)); } catch (error) { this.log('warn', 'onSessionRemoved failed', error); }
@@ -168,17 +168,52 @@ export class DshBridge {
         assistantStream: true,
         approvals: this.approvalService !== undefined,
         models: true,
-        images: true
+        images: true,
+        workspaceFiles: Boolean(this.ctx.get('workspaceFiles')),
+        workspaceChanges: Boolean(this.ctx.get('workspaceChanges'))
       }
     };
+  }
+
+  listWorkspaces() {
+    const registry = this.ctx.get('workspaceRegistry');
+    if (!registry || typeof registry.list !== 'function') return undefined;
+    // Snapshot membership once: entity getters can consult persisted headers.
+    return registry.list().map((workspace) => ({
+      id: workspace.id, title: workspace.title, path: workspace.path,
+      sessionIds: [...workspace.sessionIds]
+    }));
+  }
+
+  mapRow(row, workspaces = this.listWorkspaces()) {
+    const mapped = mapSessionRow(row);
+    // An explicit null means the desktop knows this session is ungrouped.
+    // Omitted fields retain compatibility with older hosts without Workspaces.
+    if (workspaces) {
+      const workspace = workspaces.find((item) => item.sessionIds.includes(row.sessionId));
+      mapped.workspaceId = workspace?.id ?? null;
+      mapped.workspaceTitle = workspace?.title ?? null;
+      mapped.workspacePath = workspace?.path ?? null;
+    }
+    return mapped;
   }
 
   async listSessions(request) {
     const query = request || {};
     const result = await this.controller.list({}, freshSignal());
-    const items = Array.isArray(result && result.items) ? result.items.map(mapSessionRow) : [];
+    const workspaces = this.listWorkspaces();
+    const items = Array.isArray(result && result.items) ? result.items.map((row) => this.mapRow(row, workspaces)) : [];
     const limit = Number.isInteger(query.limit) && query.limit > 0 ? Math.min(query.limit, 100) : 50;
-    return { items: items.slice(0, limit), nextCursor: null };
+    const cursor = query.cursor ?? '0';
+    if (typeof cursor !== 'string' || !/^\d+$/.test(cursor) || !Number.isSafeInteger(Number(cursor))) {
+      throw bridgeError('invalid-argument', 'invalid session cursor');
+    }
+    const offset = Number(cursor);
+    return {
+      items: items.slice(offset, offset + limit),
+      nextCursor: offset + limit < items.length ? String(offset + limit) : null,
+      ...(workspaces ? { workspaces: workspaces.map(({ id, title, path }) => ({ id, title, path })) } : {})
+    };
   }
 
   async findRow(sessionId) {
@@ -192,7 +227,7 @@ export class DshBridge {
     if (row === undefined) throw bridgeError('session-not-found', 'Session ' + sessionId + ' is not visible');
     const stateValue = await Promise.resolve(safe(() => this.controller.state({ sessionId }, freshSignal()), null)).then((value) => value, () => null);
     const projections = await Promise.resolve(safe(() => this.controller.projections({ sessionId }, freshSignal()), null)).then((value) => value, () => null);
-    const mapped = mapSessionRow(row);
+    const mapped = this.mapRow(row);
     return {
       sessionId,
       title: mapped.title,
@@ -214,6 +249,40 @@ export class DshBridge {
       cursor: Number.isInteger(result && result.cursor) ? result.cursor : -1,
       hasMore: Boolean(result && result.hasMore)
     };
+  }
+
+  async changes(sessionId, seq, index) {
+    if (!await this.findRow(sessionId)) throw bridgeError('session-not-found', 'Session is not visible');
+    const changes = this.ctx.get('workspaceChanges');
+    if (!changes) throw bridgeError('feature-unavailable', 'Host does not provide workspace changes');
+    const result = index === undefined
+      ? await changes.summary(sessionId, seq)
+      : await changes.diff(sessionId, seq, index, freshSignal());
+    return result ?? { unavailable: true, reason: 'snapshot-released' };
+  }
+
+  async readFile(sessionId, path, format) {
+    const row = await this.findRow(sessionId);
+    if (!row) throw bridgeError('session-not-found', 'Session is not visible');
+    const files = this.ctx.get('workspaceFiles');
+    if (!files) throw bridgeError('feature-unavailable', 'Host does not provide workspace files');
+    const scope = { sessionId, workspaceRoot: row.cwd ?? this.ctx.get("sandboxPolicy")?.workspaceRoot };
+    try {
+    // Preserve DSH filesystem access rules instead of using raw node:fs paths.
+    if (format === 'text') return await files.read(scope, path, { offset: 1, limit: Math.min(3000, files.config?.maxLines ?? 3000) }, freshSignal());
+    const stat = await files.stat(scope, path, freshSignal());
+    if ((stat.bytes ?? stat.size) > 32 * 1024 * 1024) throw bridgeError('invalid-argument', 'File exceeds the 32 MB download limit');
+    const result = await files.readBytes(scope, path, {}, freshSignal());
+    const bytes = Buffer.from(result.data);
+    if (bytes.length > 32 * 1024 * 1024) throw bridgeError('invalid-argument', 'File exceeds the 32 MB download limit');
+    return { data: bytes, path: result.absolutePath ?? result.path ?? path };
+    } catch (error) {
+      const code = String(error?.code ?? '');
+      if (/not-found|ENOENT/.test(code)) throw bridgeError('not-found', '文件不存在或已被移动');
+      if (/permission|denied|forbidden|EACCES/.test(code)) throw bridgeError('forbidden', 'DSH 文件访问权限不足');
+      if (/not-text|too-large/.test(code)) throw bridgeError('invalid-argument', /not-text/.test(code) ? '此文件不支持文本预览，请下载后打开' : '文件超过预览或下载上限');
+      throw error;
+    }
   }
 
   async openFollow(sessionId, options, onFrame) {
@@ -319,7 +388,20 @@ export class DshBridge {
   async createSession(options) {
     const input = options || {};
     const request = {};
-    if (typeof input.cwd === 'string' && input.cwd.length > 0) request.cwd = input.cwd;
+    if (input.workspaceId !== undefined && input.cwd !== undefined) {
+      throw bridgeError('invalid-argument', 'Specify workspaceId or cwd, not both');
+    }
+    if (typeof input.workspaceId === 'string' && input.workspaceId.length > 0) {
+      request.workspaceId = input.workspaceId;
+    } else if (typeof input.cwd === 'string' && input.cwd.length > 0) {
+      // Older mobile apps send cwd. A directory alone does not attach a DSH
+      // session to a Workspace; resolve its registered identity first.
+      const registry = this.ctx.get('workspaceRegistry');
+      const workspace = registry && typeof registry.resolveByPath === 'function'
+        ? await registry.resolveByPath(input.cwd) : undefined;
+      if (workspace) request.workspaceId = workspace.id;
+      else request.cwd = input.cwd;
+    }
     if (typeof input.agentPreset === 'string' && input.agentPreset.length > 0) request.agentPreset = input.agentPreset;
     return this.controller.create(request);
   }

@@ -28,9 +28,9 @@ export function ConnectionBadge({
 }) {
   const label = LABELS[status];
   return (
-    <View className="flex-row items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5">
+    <View className="min-w-0 max-w-full flex-row items-center gap-2 rounded-full border border-border bg-surface px-3 py-2">
       <View className={'h-2 w-2 rounded-full ' + DOT[status]} />
-      <Text className="text-xs text-muted" numberOfLines={1}>
+      <Text className="shrink text-xs leading-4 text-muted" numberOfLines={1}>
         {compact ? label : hostName ? hostName + ' · ' + label : label}
       </Text>
     </View>

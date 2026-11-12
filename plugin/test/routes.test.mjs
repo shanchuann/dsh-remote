@@ -86,6 +86,20 @@ test("GET /v1/sessions forwards limit and returns rows", async () => {
   });
 });
 
+test("GET /v1/sessions preserves all projects independently of conversation pagination", async () => {
+  await withHarness({}, async (harness) => {
+    const paired = await pairDevice(harness);
+    const workspaces = Array.from({ length: 17 }, (_, i) => ({ id: 'w' + i, title: '项目 ' + i, path: 'D:/project-' + i }));
+    harness.bridge.listSessions = async () => ({ items: [], nextCursor: null, workspaces });
+    const response = await request(harness.baseUrl, "/v1/sessions?limit=1", { token: paired.token });
+    assert.equal(response.status, 200);
+    assert.deepEqual(response.body.items, []);
+    assert.deepEqual(response.body.workspaces, workspaces);
+    harness.bridge.listSessions = async () => ({ items: [], workspaces: [] });
+    assert.deepEqual((await request(harness.baseUrl, "/v1/sessions", { token: paired.token })).body.workspaces, []);
+  });
+});
+
 test("GET /v1/sessions/:id returns the snapshot and maps bridge errors", async () => {
   await withHarness({}, async (harness) => {
     const paired = await pairDevice(harness);
@@ -131,6 +145,21 @@ test("history is sorted by seq and forwards paging options", async () => {
     assert.equal(response.body.cursor, 2);
     assert.equal(response.body.hasMore, false);
     assert.deepEqual(harness.bridge.historyRequests.at(-1), { sessionId: "session-1", options: { maxMessages: 10, beforeSeq: 9 } });
+  });
+});
+
+test('POST /v1/sessions forwards Workspace identity and rejects ambiguous or invalid locations', async () => {
+  await withHarness({}, async (harness) => {
+    const { token } = await pairDevice(harness);
+    const result = await request(harness.baseUrl, '/v1/sessions', { method: 'POST', token, body: { workspaceId: 'workspace-demo' } });
+    assert.equal(result.status, 200);
+    assert.deepEqual(harness.bridge.createCalls.at(-1), { workspaceId: 'workspace-demo' });
+    const count = harness.bridge.createCalls.length;
+    for (const body of [{ workspaceId: 42 }, { workspaceId: '' }, { workspaceId: 'w', cwd: 'D:/demo' }]) {
+      const invalid = await request(harness.baseUrl, '/v1/sessions', { method: 'POST', token, body });
+      assert.equal(invalid.status, 400);
+    }
+    assert.equal(harness.bridge.createCalls.length, count);
   });
 });
 

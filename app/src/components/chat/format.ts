@@ -46,6 +46,8 @@ export function shortenPath(path: string, max = 36): string {
 }
 
 const LANGUAGE_ALIASES: Record<string, CodeLanguage> = {
+  diff: "diff",
+  patch: "patch",
   ts: "typescript",
   typescript: "typescript",
   tsx: "tsx",
@@ -89,7 +91,7 @@ const LANGUAGE_ALIASES: Record<string, CodeLanguage> = {
 
 /** Maps a fenced-code info string or file extension to a Prism language. */
 export function toCodeLanguage(raw: string | undefined | null): CodeLanguage {
-  const key = (raw ?? "").trim().toLowerCase().replace(/^\./, "");
+  const key = (raw ?? "").trim().toLowerCase().replace(/^\./, "").split(/\s+/)[0];
   if (key in LANGUAGE_ALIASES) return LANGUAGE_ALIASES[key] ?? "text";
   return "text";
 }
@@ -259,7 +261,7 @@ export function toolTarget(
     record.path ??
     record.file_path ??
     record.filePath ??
-    record.query ??
+    (Array.isArray(record.queries) ? record.queries.join("，") : record.query) ??
     record.url ??
     record.pattern;
   if (typeof direct === "string" && direct.trim().length > 0) {
@@ -275,8 +277,11 @@ export function toolCode(
   name: string | undefined,
   input: unknown,
 ): { code: string; language: CodeLanguage } | undefined {
+  if (typeof input === 'string' && /patch|diff/.test(name ?? '')) return { code: input, language: 'diff' };
   const record = asRecord(input);
   if (!record) return undefined;
+  if (typeof record.patch === 'string') return { code: record.patch, language: 'diff' };
+  if (typeof record.diff === 'string') return { code: record.diff, language: 'diff' };
   const command =
     record.command ?? record.cmd ?? record.commandLine ?? record.script;
   if (typeof command === "string" && command.trim().length > 0) {

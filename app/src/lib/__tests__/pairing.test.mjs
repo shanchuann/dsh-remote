@@ -71,6 +71,11 @@ test('normalizeBaseUrl throws a user-facing message on bad input', () => {
   assert.throws(() => normalizeBaseUrl(''), /Host 地址格式不正确/);
 });
 
+test('rejects unexpected URL paths and accepts IPv6 origins without duplicate brackets', () => {
+  assert.equal(tryNormalizeBaseUrl('https://host.example/foo'), null);
+  assert.equal(tryNormalizeBaseUrl('http://[::1]:8790/v1'), 'http://[::1]:8790');
+});
+
 test('validates six digit pairing codes', () => {
   assert.equal(isValidPairingCode('123456'), true);
   assert.equal(isValidPairingCode(' 123456 '), true);

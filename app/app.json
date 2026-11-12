@@ -2,7 +2,7 @@
   "expo": {
     "name": "DSH Remote",
     "slug": "dsh-remote",
-    "version": "0.1.8",
+    "version": "0.1.15",
     "scheme": "dshremote",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -17,6 +17,7 @@
     },
     "android": {
       "package": "dev.dsh.remote",
+      "versionCode": 15,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "monochromeImage": "./assets/images/adaptive-icon-monochrome.png",
@@ -64,7 +65,8 @@
         {
           "photosPermission": "选择图片作为附件发送给 DSH"
         }
-      ]
+      ],
+      "expo-sharing"
     ]
   }
 }

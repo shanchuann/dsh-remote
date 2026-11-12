@@ -1,8 +1,11 @@
-import { useState } from "react";
-import { Alert, Image, View } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { Alert, AppState, Image, Pressable, Text, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useKeyboardState } from "react-native-keyboard-controller";
 
+import { router } from "expo-router";
+import { cancelVoice, refreshVoice, startVoice, stopVoice, useVoice, voicePermissionPending } from "../../lib/voice";
 import { PromptInput } from "../prompt-input";
 import { ImageIcon } from "../common/icons";
 import type { PromptImage } from "../../lib/types";
@@ -17,7 +20,7 @@ export type ComposerProps = {
   placeholder?: string;
 };
 
-const MAX_IMAGES = 5;
+const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 function base64Bytes(data: string): number {
@@ -39,6 +42,38 @@ export function Composer({
   placeholder = "给 DSH 发消息…",
 }: ComposerProps) {
   const insets = useSafeAreaInsets();
+  const keyboardVisible = useKeyboardState((state) => state.isVisible);
+  const voice = useVoice();
+  const valueRef = useRef(value);
+  const voiceTicket = useRef(0);
+  const voiceStarting = useRef(false);
+  useEffect(() => { valueRef.current = value; }, [value]);
+  const recording = voice.phase === 'recording';
+  const recognizing = voice.phase === 'recognizing';
+  useEffect(() => {
+    void refreshVoice().catch(() => undefined);
+    const sub = AppState.addEventListener('change', state => { if (state !== 'active' && !voicePermissionPending()) { voiceTicket.current++; cancelVoice(); } });
+    const invalidateVoice = () => { voiceTicket.current++; cancelVoice(); };
+    return () => { sub.remove(); invalidateVoice(); };
+  }, []);
+  const beginVoice = async () => {
+    if (disabled || voiceStarting.current || recognizing || recording) return;
+    if (!voice.ready) { Alert.alert('本地语音输入', '请先在设置页下载并校验语音模型。', [{ text: '取消', style: 'cancel' }, { text: '去设置', onPress: () => router.push('/settings') }]); return; }
+    voiceStarting.current = true;
+    const ticket = ++voiceTicket.current;
+    try { await startVoice(); if (ticket !== voiceTicket.current) cancelVoice(); }
+    catch (error) { Alert.alert('无法开始录音', error instanceof Error ? error.message : String(error)); }
+    finally { voiceStarting.current = false; }
+  };
+  const finishVoice = async () => {
+    const ticket = ++voiceTicket.current;
+    try {
+      const text = await stopVoice();
+      if (ticket !== voiceTicket.current) return;
+      if (text.trim()) onValueChange([valueRef.current.trimEnd(), text.trim()].filter(Boolean).join(' '));
+      else Alert.alert('没有识别到语音', '请靠近麦克风后重试。');
+    } catch (error) { if (ticket === voiceTicket.current) Alert.alert('识别失败', error instanceof Error ? error.message : String(error)); }
+  };
   const [images, setImages] = useState<PromptImage[]>([]);
 
   const pickImages = async () => {
@@ -86,46 +121,48 @@ export function Composer({
     setImages([]);
   };
 
-  const handleChange = (next: string) => {
-    if (next.endsWith("\n") && (next.trim().length > 0 || images.length > 0) && !running && !disabled) {
-      onValueChange("");
-      send(next);
-      return;
-    }
-    onValueChange(next);
-  };
+  // Multiline text and dictated text stay editable; only the send button submits.
+  const handleChange = onValueChange;
 
   const attachments = images.map((image) => ({
     id: image.id,
     label: image.name ?? "图片",
-    icon: image.uri ? (
-      <Image source={{ uri: image.uri }} style={{ width: 16, height: 16, borderRadius: 4 }} />
-    ) : (
-      <View style={{ width: 16, height: 16, borderRadius: 4, backgroundColor: "#d1d5db" }} />
+    icon: (
+      <Image
+        source={{ uri: "data:" + image.mediaType + ";base64," + image.data }}
+        style={{ width: 16, height: 16, borderRadius: 4 }}
+      />
     ),
   }));
 
   return (
     <View
-      className="bg-background px-2 pt-1.5"
-      style={{ paddingBottom: Math.max(insets.bottom, 6) + 4 }}
+      className="shrink-0 px-4 pt-3"
+      style={{ paddingBottom: (keyboardVisible ? 0 : insets.bottom) + 12 }}
     >
+      {recording || recognizing ? <View className="mb-2 flex-row items-center gap-2 rounded-2xl border border-primary/30 bg-primary/5 px-3 py-2">
+        <View className="flex-1"><Text className="text-sm text-foreground">{recognizing ? '正在本地识别…' : '正在聆听 ' + (voice.seconds ?? 0) + ' 秒'}</Text><Text className="mt-1 text-xs text-muted">{recognizing ? '结果将填入输入框' : '最多 90 秒，完成后可编辑'}</Text></View>
+        <Pressable accessibilityRole="button" onPress={() => { voiceTicket.current++; cancelVoice(); }} className="min-h-12 justify-center px-2"><Text className="text-muted">取消</Text></Pressable>
+        {recording ? <Pressable accessibilityRole="button" onPress={() => void finishVoice()} className="min-h-12 justify-center px-2"><Text className="font-medium text-primary">完成</Text></Pressable> : null}
+      </View> : null}
       <PromptInput
         value={value}
         onValueChange={handleChange}
         onSubmit={(text) => send(text)}
         loading={running}
         onStop={onStop}
-        disabled={disabled}
+        disabled={disabled || recording || recognizing}
+        onVoice={voice.supported ? () => void beginVoice() : undefined}
         placeholder={placeholder}
         maxRows={5}
+        layout="capsule"
         restoreOnStop
-        className="border border-border"
+        className="border border-border-strong"
         actions={[
           {
             value: "image",
             label: "添加图片",
-            description: "最多 5 张，单张 ≤ 5MB",
+            description: "最多 4 张，单张 ≤ 5MB",
             icon: ImageIcon,
           },
         ]}

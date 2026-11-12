@@ -10,6 +10,7 @@ test("parseQuickTunnelUrl finds a trycloudflare URL in cloudflared output", () =
   assert.equal(parseQuickTunnelUrl(banner), "https://dsh-remote.trycloudflare.com");
   assert.equal(parseQuickTunnelUrl("https://dsh-remote.trycloudflare.com/"), "https://dsh-remote.trycloudflare.com");
   assert.equal(parseQuickTunnelUrl("no url here"), undefined);
+  assert.equal(parseQuickTunnelUrl("see https://api.trycloudflare.com/docs"), undefined);
   assert.equal(parseQuickTunnelUrl(undefined), undefined);
 });
 

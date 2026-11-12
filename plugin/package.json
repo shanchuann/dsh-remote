@@ -1,6 +1,6 @@
 {
   "name": "dsh-remote-harness",
-  "version": "0.1.5",
+  "version": "0.1.14",
   "description": "LAN remote access for DeepSeek Harness: QR pairing, device tokens, REST + SSE bridge for the DSH Remote Android app. Zero runtime dependencies.",
   "type": "module",
   "license": "MIT",

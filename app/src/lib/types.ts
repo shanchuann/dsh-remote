@@ -51,6 +51,8 @@ export interface Capabilities {
   problemQuestions?: boolean;
   attachments?: boolean;
   images?: boolean;
+  workspaceFiles?: boolean;
+  workspaceChanges?: boolean;
 }
 
 /** A paired device row (GET /v1/devices, GET /v1/host). */
@@ -119,6 +121,10 @@ export interface SessionLastMessage {
 /** A row from GET /v1/sessions (protocol 3.3). */
 export interface SessionRow {
   sessionId: string;
+  /** Missing on older plugins; null explicitly means desktop Ungrouped. */
+  workspaceId?: string | null;
+  workspaceTitle?: string | null;
+  workspacePath?: string | null;
   title?: string | null;
   createdAt?: number;
   updatedAt?: number;
@@ -136,9 +142,17 @@ export interface SessionRow {
 }
 
 /** GET /v1/sessions response. */
+export interface WorkspaceRow {
+  id: string;
+  title?: string;
+  path: string;
+}
+
 export interface SessionListResponse {
   items: SessionRow[];
   nextCursor?: string | null;
+  /** Complete desktop project catalog, including projects without conversations. */
+  workspaces?: WorkspaceRow[];
 }
 
 /** Session header inside snapshots / details (protocol 3.5, 9.4). */
@@ -435,6 +449,7 @@ export interface OpenSessionOptions {
 
 /** Options for POST /v1/sessions (protocol 3.4). */
 export interface CreateSessionOptions {
+  workspaceId?: string;
   cwd?: string;
   agentPreset?: string;
 }
@@ -468,12 +483,14 @@ export interface PendingUser {
   text: string;
   time: number;
   status: 'sending' | 'failed';
+  images?: PromptImage[];
 }
 
 /** Everything the chat screen needs about the open session. */
 export interface CurrentSessionState {
   sessionId?: string;
   title?: string;
+  cwd?: string;
   running: boolean;
   active: boolean;
   /** Raw events; snapshot replaces the array, live events append by seq. */
@@ -481,11 +498,36 @@ export interface CurrentSessionState {
   streaming: StreamingState;
   pendingApprovals: Approval[];
   pendingUser: PendingUser[];
+  imagePreviews?: Record<string, PromptImage[]>;
   model?: ModelSelection;
   loading: boolean;
   hasMore: boolean;
   cursor?: number | null;
+  todos?: unknown;
+  teamTasks?: unknown[];
   error?: string;
+}
+
+export interface ChangedFile {
+  path: string;
+  display?: string;
+  added: number;
+  deleted: number;
+  binary?: boolean;
+}
+export interface WorkspaceChangeSummary {
+  files?: ChangedFile[];
+  total?: number;
+  added?: number;
+  deleted?: number;
+  unavailable?: boolean;
+}
+export interface WorkspaceDiff {
+  kind?: string;
+  path?: string;
+  hunks?: { oldStart: number; oldLines: number; newStart: number; newLines: number; lines: string[] }[];
+  unavailable?: boolean;
+  coarse?: boolean;
 }
 
 /** Persisted connection metadata stored in AsyncStorage (token lives elsewhere). */

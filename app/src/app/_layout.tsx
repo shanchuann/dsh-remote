@@ -18,6 +18,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useResolveClassNames, useUniwind } from 'uniwind';
 
 import { useRemoteStore } from '../lib/store';
+import { voicePermissionPending } from '../lib/voice';
 
 export default function RootLayout() {
   const { theme } = useUniwind();
@@ -28,7 +29,9 @@ export default function RootLayout() {
   // the background (protocol 6.3).
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void useRemoteStore.getState().actions.resume();
+      // The microphone permission activity briefly pauses Android. Reopening
+      // the session here would unmount the composer just as recording starts.
+      if (state === 'active' && !voicePermissionPending()) void useRemoteStore.getState().actions.resume();
     });
     return () => subscription.remove();
   }, []);

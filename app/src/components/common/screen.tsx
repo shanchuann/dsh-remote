@@ -32,14 +32,10 @@ export function ScreenTitle({
   left?: ReactNode;
 }) {
   return (
-    <View className="flex-row items-center gap-3 px-5 pb-4 pt-3">
+    <View className="flex-row items-center gap-3 px-4 pb-4 pt-4">
       {left}
       <View className="flex-1">
-        <View className="flex-row items-center gap-1.5">
-          <View className="h-1.5 w-1.5 rounded-full bg-primary" />
-          <View className="h-1.5 w-6 rounded-full bg-primary/40" />
-        </View>
-        <Text className="mt-2 text-[28px] font-semibold leading-8 text-foreground">{title}</Text>
+        <Text className="text-[26px] font-semibold leading-8 text-foreground">{title}</Text>
         {subtitle ? <Text className="mt-1 text-sm text-muted">{subtitle}</Text> : null}
       </View>
       {right}
@@ -73,10 +69,10 @@ export function SectionCard({
 }
 
 /** Centered spinner with a label, used while restoring a connection. */
-export function LoadingView({ label }: { label: string }) {
+export function LoadingView({ label, fill = true }: { label: string; fill?: boolean }) {
   const { color } = useResolveClassNames('text-primary');
   return (
-    <View className="flex-1 items-center justify-center gap-3 px-8">
+    <View className={(fill ? 'flex-1 ' : '') + 'items-center justify-center gap-3 px-8'}>
       <ActivityIndicator color={typeof color === 'string' ? color : undefined} />
       <Text className="text-sm text-muted">{label}</Text>
     </View>

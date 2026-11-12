@@ -1,17 +1,22 @@
-import { memo, useMemo, type Ref } from "react";
-import { Pressable, Text, View } from "react-native";
+import { memo, useCallback, useImperativeHandle, useMemo, useRef, useState, type Ref } from "react";
+import { FlatList, Pressable, Text, View } from "react-native";
 
-import { MessageTyping } from "../message";
-import { MessageScroller, type MessageScrollerHandle } from "../message-scroller";
+import type { MessageScrollerHandle } from "../message-scroller";
 import type { TranscriptItem } from "../../lib/transcript";
 import { ApprovalHistoryCard } from "./approval-history";
 import { AssistantMessage } from "./assistant-message";
+import { WorkspaceChanges } from "./workspace-changes";
+import { Deliverables } from "./deliverables";
 import { TodoBlock } from "./todo-block";
 import { ToolCallCard } from "./tool-call-card";
 import { TurnDivider } from "./turn-divider";
 import { UserMessageRow } from "./user-message-row";
+import { LoadingState } from "./beautiful/loading-state";
+import { ToolChips } from "./beautiful/tool-chips";
+import { groupToolRuns, type DisplayItem } from "./beautiful/transcript-groups";
 
 export type MessageListProps = {
+  topInset?: number;
   items: readonly TranscriptItem[];
   running: boolean;
   /** True while assistant text is arriving, which replaces the typing dots. */
@@ -28,7 +33,7 @@ export type MessageListProps = {
   ref?: Ref<MessageScrollerHandle>;
 };
 
-function sameItem(a: TranscriptItem, b: TranscriptItem): boolean {
+function sameItem(a: DisplayItem, b: DisplayItem): boolean {
   if (a === b) return true;
   if (a.kind !== b.kind || a.id !== b.id) return false;
   const left = a as Record<string, unknown>;
@@ -38,12 +43,13 @@ function sameItem(a: TranscriptItem, b: TranscriptItem): boolean {
       return (
         left.text === right.text &&
         left.reasoning === right.reasoning &&
-        left.streaming === right.streaming
+        left.streaming === right.streaming && left.images === right.images
       );
     case "user":
       return (
         left.text === right.text &&
         left.pending === right.pending &&
+        left.failed === right.failed &&
         left.time === right.time &&
         left.images === right.images
       );
@@ -52,10 +58,16 @@ function sameItem(a: TranscriptItem, b: TranscriptItem): boolean {
         left.name === right.name &&
         left.status === right.status &&
         left.result === right.result &&
-        left.input === right.input
+        left.input === right.input && left.images === right.images && left.meta === right.meta
       );
+    case "deliverables":
+      return JSON.stringify(left.files) === JSON.stringify(right.files);
     case "todo":
-      return JSON.stringify(left.todo) === JSON.stringify(right.todo);
+      return JSON.stringify(left.items) === JSON.stringify(right.items);
+    case "tools": {
+      if (b.kind !== 'tools') return false;
+      return a.items.length === b.items.length && a.items.every((item, index) => sameItem(item, b.items[index]));
+    }
     case "approval":
       return (
         (left.approval as { outcome?: unknown })?.outcome ===
@@ -73,7 +85,7 @@ const TranscriptRow = memo(
     item,
     onRetryPending,
   }: {
-    item: TranscriptItem;
+    item: DisplayItem;
     onRetryPending?: (text: string) => void;
   }) {
     return renderItem(item, onRetryPending);
@@ -83,7 +95,7 @@ const TranscriptRow = memo(
 );
 
 function renderItem(
-  item: TranscriptItem,
+  item: DisplayItem,
   onRetryPending?: (text: string) => void,
 ) {
   switch (item.kind) {
@@ -93,6 +105,12 @@ function renderItem(
       return <AssistantMessage key={item.id} item={item} />;
     case "tool":
       return <ToolCallCard key={item.id} item={item} />;
+    case "tools":
+      return <ToolChips key={item.id} items={item.items} />;
+    case "changes":
+      return <WorkspaceChanges key={item.id} seq={item.seq} />;
+    case "deliverables":
+      return <Deliverables key={item.id} files={item.files} title={item.title} />;
     case "todo":
       return <TodoBlock key={item.id} item={item} />;
     case "approval":
@@ -109,6 +127,7 @@ function renderItem(
  * you drag up, and offers a pill back to the newest message.
  */
 export function MessageList({
+  topInset = 0,
   items,
   running,
   streaming,
@@ -124,26 +143,59 @@ export function MessageList({
     () =>
       items.filter((item) => {
         if (item.kind === "turn") return showTurns;
+        if (item.kind === "todo") return false; // The current task board stays above the composer.
         // Undecided approvals are answered in the blocking sheet above the composer.
         if (item.kind === "approval") return item.approval.outcome !== undefined;
         return true;
       }),
     [items, showTurns],
   );
+  // Native offset zero is always the newest row. This does not depend on
+  // timers or measuring every image/code block before a scrollToEnd call.
+  const grouped = useMemo(() => groupToolRuns(visible).reverse(), [visible]);
+  const list = useRef<FlatList<DisplayItem>>(null);
+  const following = useRef(true);
+  const [atLatest, setAtLatest] = useState(true);
+  const jumpToLatest = useCallback((animated = false) => {
+    following.current = true;
+    setAtLatest(true);
+    onFollowChange?.(true);
+    list.current?.scrollToOffset({ offset: 0, animated });
+  }, [onFollowChange]);
+  useImperativeHandle(ref, () => ({ scrollToEnd: jumpToLatest }), [jumpToLatest]);
   const last = visible[visible.length - 1];
   const typing = running && !streaming && !(last?.kind === "assistant" && last.streaming);
 
   return (
-    <MessageScroller
-      ref={ref}
-      busy={running}
-      messageCount={visible.length}
-      onFollowChange={onFollowChange}
-      label="会话"
-      jumpLabel="回到最新"
-      contentClassName="pb-3 pt-2"
-    >
-      {hasMore && onLoadOlder ? (
+    <View className="flex-1">
+    <FlatList
+      ref={list}
+      inverted
+      data={grouped}
+      keyExtractor={(item) => item.id}
+      accessibilityLabel="会话"
+      keyboardShouldPersistTaps="handled"
+      initialNumToRender={10}
+      maxToRenderPerBatch={8}
+      windowSize={9}
+      removeClippedSubviews={false}
+      maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
+      contentContainerStyle={{ paddingTop: 8, paddingBottom: topInset + 8 }}
+      scrollIndicatorInsets={{ top: topInset }}
+      scrollEventThrottle={32}
+      onScroll={(event) => {
+        const next = event.nativeEvent.contentOffset.y <= 56;
+        if (next !== following.current) {
+          following.current = next;
+          setAtLatest(next);
+          onFollowChange?.(next);
+        }
+      }}
+      onContentSizeChange={() => {
+        if (following.current) list.current?.scrollToOffset({ offset: 0, animated: false });
+      }}
+      renderItem={({ item }) => <TranscriptRow item={item} onRetryPending={onRetryPending} />}
+      ListFooterComponent={hasMore && onLoadOlder ? (
         <View className="items-center pb-2 pt-1">
           <Pressable
             accessibilityRole="button"
@@ -151,22 +203,25 @@ export function MessageList({
             accessibilityState={{ busy: loadingOlder }}
             disabled={loadingOlder}
             onPress={onLoadOlder}
-            className="rounded-full border border-border bg-surface px-3.5 py-1.5 active:opacity-70"
+            className="min-h-12 justify-center rounded-full px-3.5 py-2 active:bg-surface"
           >
-            <Text className="text-[11px] text-muted">
+            <Text className="text-xs leading-4 text-muted">
               {loadingOlder ? "正在加载…" : "加载更早的消息"}
             </Text>
           </Pressable>
         </View>
-      ) : null}
-      {visible.map((item) => (
-        <TranscriptRow key={item.id} item={item} onRetryPending={onRetryPending} />
-      ))}
-      {typing ? (
+      ) : undefined}
+      ListHeaderComponent={typing ? (
         <View className="px-4 py-2">
-          <MessageTyping label="正在回复" />
+          <LoadingState />
         </View>
-      ) : null}
-    </MessageScroller>
+      ) : undefined}
+    />
+    {!atLatest ? <View pointerEvents="box-none" className="absolute bottom-3 left-0 right-0 items-center">
+      <Pressable accessibilityRole="button" accessibilityLabel="回到最新消息" onPress={() => jumpToLatest(false)} className="min-h-11 justify-center rounded-full border border-border bg-background px-4">
+        <Text className="text-xs font-medium text-foreground">↓ 回到最新</Text>
+      </Pressable>
+    </View> : null}
+    </View>
   );
 }

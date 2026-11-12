@@ -7,7 +7,7 @@ import type { TranscriptItem } from "../../lib/transcript";
 export type ApprovalItem = Extract<TranscriptItem, { kind: "approval" }>;
 
 function statusOf(outcome: string | undefined): ToolApprovalStatus {
-  if (outcome === "allowed") return "approved";
+  if (outcome === "allowed" || outcome === "allowed-once" || outcome === "allow") return "approved";
   if (outcome === "rejected") return "denied";
   return "pending";
 }

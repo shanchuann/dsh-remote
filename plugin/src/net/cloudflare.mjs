@@ -14,7 +14,8 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 
-const QUICK_URL = /https:\/\/[a-z0-9-]+\.trycloudflare\.com\/?/i;
+// `api.trycloudflare.com` only appears in cloudflared's help/error text.
+const QUICK_URL = /https:\/\/(?!api\.)[a-z0-9-]+\.trycloudflare\.com\/?/i;
 
 /** Extract the first quick-tunnel URL from cloudflared output. */
 export function parseQuickTunnelUrl(text) {

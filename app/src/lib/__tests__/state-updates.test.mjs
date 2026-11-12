@@ -5,7 +5,10 @@ import {
   appendEvent,
   applyAssistantFrame,
   applySessionStatus,
+  applySessionEventToRows,
+  historyBoundary,
   emptyStreaming,
+  streamingFromSnapshot,
   filterPendingByEvents,
   mergeEventLists,
   mergeApproval,
@@ -22,6 +25,29 @@ import {
 } from '../state-updates.ts';
 
 const ev = (type, seq, data) => ({ type, seq, time: 1763000000000, data });
+
+test('joining a running DSH attempt restores its compact prefix before subsequent deltas', () => {
+  const baseline = { activeAttempt: { attemptId: 'a', nextIndex: 5, stream: [
+    { type: 'chunk', chunk: { type: 'block-start' } },
+    { type: 'reasoning-chunks', texts: ['思考', '过程'] },
+    { type: 'text-chunks', texts: ['已经', '输出'] },
+  ] } };
+  const prefix = streamingFromSnapshot(baseline);
+  assert.equal(prefix.reasoning, '思考过程'); assert.equal(prefix.text, '已经输出');
+  assert.equal(applyAssistantFrame(prefix, { type: 'chunk', attemptId: 'a', chunk: { type: 'text-delta', text: '后续' } }).text, '已经输出后续');
+  assert.deepEqual(streamingFromSnapshot({ revision: 0 }), emptyStreaming());
+});
+
+test('partial status frames preserve omitted flags and cwd/model updates stay session-scoped', () => {
+  const rows = [{ sessionId: 'a', active: false, running: true }, { sessionId: 'b', active: true }];
+  assert.equal(applySessionStatus(rows, { sessionId: 'a' })[0].active, false);
+  assert.equal(applySessionStatus(rows, { sessionId: 'a' })[0].running, true);
+  const model = { provider: 'p', model: 'm' };
+  const next = applySessionEventToRows(rows, 'a', ev('model/selection', 1, { next: model }));
+  assert.deepEqual(next[0].model, model);
+  assert.equal(next[1], rows[1]);
+  assert.equal(historyBoundary([ev('x', 10), ev('x', 5)], 10), 5);
+});
 
 /* ------------------------------------------------------------- events */
 

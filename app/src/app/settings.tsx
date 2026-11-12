@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { useResolveClassNames } from 'uniwind';
 
+import { VoiceSettings } from '../components/chat/voice-settings';
 import { Button } from '../components/button';
 import { AppButton } from '../components/common/app-button';
 import { ConnectionBadge } from '../components/common/connection-badge';
@@ -174,6 +175,7 @@ export default function SettingsScreen() {
           </Button>
         </View>
 
+        <VoiceSettings />
         <SectionCard title="Host">
           <InfoRow label="名称" value={host?.name ?? '—'} />
           <InfoRow label="地址" value={displayBaseUrl(connection.baseUrl)} />

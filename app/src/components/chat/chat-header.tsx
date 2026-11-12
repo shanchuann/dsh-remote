@@ -1,5 +1,8 @@
-import { type ReactNode, useEffect } from "react";
-import { Pressable, Text, View } from "react-native";
+import { type ComponentProps, type ComponentRef, type ComponentType, type ReactNode, type RefObject, useEffect } from "react";
+import { type LayoutChangeEvent, Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import MaskedView from "@react-native-masked-view/masked-view";
+import { BlurView } from "expo-blur";
+import { LinearGradient } from "expo-linear-gradient";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -7,21 +10,28 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useResolveClassNames } from "uniwind";
+import { useResolveClassNames, useUniwind } from "uniwind";
 
 import { useReducedMotionPreference } from "../../hooks/use-reduced-motion";
 import { ArrowGlyph, ChevronDownGlyph } from "../../primitives/agent-icons";
 import { RunningBar } from "../../primitives/running-bar";
+import { UsersIcon } from "../common/icons";
+
+// MaskedView 0.3 still types its ref using NativeMethods, removed in RN 0.88.
+const HeaderMask = MaskedView as unknown as ComponentType<ComponentProps<typeof View> & { maskElement: ReactNode }>;
 
 export type ChatHeaderProps = {
+  blurTarget: RefObject<ComponentRef<typeof View> | null>;
+  onLayout: (event: LayoutChangeEvent) => void;
   title: string;
   subtitle?: string;
-  modelLabel?: string;
+  subagentCount: number;
+  subagentsRunning: boolean;
   running: boolean;
   /** False while the SSE connection is down: the dot turns muted. */
   connected: boolean;
   onBack: () => void;
-  onPressModel: () => void;
+  onPressSubagents: () => void;
   /** Extra control on the trailing edge, such as the overflow menu. */
   trailing?: ReactNode;
 };
@@ -51,69 +61,89 @@ function RunningDot({ running }: { running: boolean }) {
 
 /**
  * The chat screen's own header: back, session title (with the working
- * directory underneath), the model chip that opens the model picker and a
- * live status dot. A hairline separates it from the conversation.
+ * directory underneath), the subagent entry and a
+ * live status dot. The native backdrop fades into the scrolling transcript.
  */
 export function ChatHeader({
+  blurTarget,
+  onLayout,
   title,
   subtitle,
-  modelLabel,
+  subagentCount,
+  subagentsRunning,
   running,
   connected,
   onBack,
-  onPressModel,
+  onPressSubagents,
   trailing,
 }: ChatHeaderProps) {
   const insets = useSafeAreaInsets();
+  const { theme } = useUniwind();
+  const dark = theme === "dark";
+  const { width, fontScale } = useWindowDimensions();
+  const compact = width / fontScale < 360;
   const reduceMotion = useReducedMotionPreference();
   const { color: foreground } = useResolveClassNames("text-foreground");
   const { color: muted } = useResolveClassNames("text-muted");
 
   return (
-    <View className="bg-background" style={{ paddingTop: insets.top }}>
-      <View className="h-14 flex-row items-center gap-1 pl-1 pr-2">
+    <View pointerEvents="box-none" onLayout={onLayout} style={{ position: "absolute", top: 0, left: 0, right: 0, paddingTop: insets.top }}>
+      <HeaderMask
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, { bottom: -28 }]}
+        maskElement={<LinearGradient colors={["black", "black", "transparent"]} locations={[0, 0.65, 1]} style={StyleSheet.absoluteFill} />}
+      >
+        <BlurView
+          blurTarget={blurTarget}
+          blurMethod="dimezisBlurViewSdk31Plus"
+          intensity={85}
+          tint={dark ? "dark" : "light"}
+          style={StyleSheet.absoluteFill}
+        />
+      </HeaderMask>
+      <View className="min-h-14 flex-row items-center gap-1 px-1 py-1">
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="返回"
-          hitSlop={8}
           onPress={onBack}
-          className="size-10 items-center justify-center rounded-full active:bg-surface"
+          className="size-12 items-center justify-center rounded-full active:bg-surface"
         >
           <ArrowGlyph back size={21} color={foreground} strokeWidth={2} />
         </Pressable>
-        <View className="flex-1 pr-1">
+        <View className="min-w-0 flex-1 gap-0.5 pr-1">
           <Text
             numberOfLines={1}
             accessibilityRole="header"
-            className="text-[16px] font-semibold text-foreground"
+            className="text-base font-semibold leading-[22px] text-foreground"
           >
             {title}
           </Text>
           {subtitle ? (
-            <Text numberOfLines={1} className="text-[11px] text-muted">
+            <Text numberOfLines={1} className="text-xs leading-4 text-muted">
               {subtitle}
             </Text>
           ) : null}
         </View>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={"切换模型，当前 " + (modelLabel ?? "未知")}
-          hitSlop={6}
-          onPress={onPressModel}
-          className="h-9 flex-row items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 active:opacity-70"
+          accessibilityLabel={"查看子智能体，共 " + subagentCount + " 个"}
+          onPress={onPressSubagents}
+          className="min-h-12 justify-center active:opacity-70"
         >
-          <RunningDot running={running && connected} />
-          <Text
-            numberOfLines={1}
-            className="max-w-[120px] text-[12px] font-medium text-foreground"
-          >
-            {modelLabel ?? "模型"}
-          </Text>
-          <ChevronDownGlyph size={12} color={muted} />
+          <View className="min-h-8 flex-row items-center gap-1.5 rounded-full border border-border bg-surface px-2.5 py-1.5">
+            <RunningDot running={subagentsRunning && connected} />
+            {compact ? <UsersIcon size={16} color={foreground} /> : null}
+            <Text
+              numberOfLines={1}
+              className="text-[13px] font-medium leading-[18px] text-foreground"
+            >
+              {compact ? subagentCount : '子智能体' + (subagentCount > 0 ? ' ' + subagentCount : '')}
+            </Text>
+            <ChevronDownGlyph size={12} color={muted} />
+          </View>
         </Pressable>
         {trailing}
       </View>
-      <View className="h-px bg-border" />
       {running && connected ? <RunningBar reduce={reduceMotion} /> : null}
     </View>
   );

@@ -1,28 +1,26 @@
 import { useMemo } from 'react';
-import { Image, Linking, ScrollView, Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import { useResolveClassNames } from 'uniwind';
 
 import type { MarkdownInline } from './markdown-parse';
 import { parseInlineMarkdown, parseMarkdownBlocks } from './markdown-parse';
+import { RemoteImage, useSessionFiles } from './session-files';
+import { StreamingSpan } from './beautiful/streaming-span';
+import { CodeBlock } from '../code-block';
+import { toCodeLanguage } from './format';
 
-function InlineSpans({ spans, muted, linkColor }: { spans: MarkdownInline[]; muted: boolean; linkColor: string }) {
+function InlineSpans({ spans, muted, linkColor, streaming = false }: { spans: MarkdownInline[]; muted: boolean; linkColor: string; streaming?: boolean }) {
+  const { open } = useSessionFiles();
   return (
     <>
       {spans.map((span, index) => {
         if (span.image !== undefined) {
           return (
-            <Image
-              key={index}
-              source={{ uri: span.image }}
-              accessibilityLabel={span.text || '图片'}
-              resizeMode="contain"
-              style={{ width: '100%', height: 180, borderRadius: 10, marginVertical: 4 }}
-            />
+            <RemoteImage key={index} image={{ url: span.image, name: span.text }} />
           );
         }
         const classes = [
-          muted ? 'text-[13px] leading-5 text-muted' : 'text-[15px] leading-[24px] text-foreground',
-          span.code ? 'font-mono text-[13px] text-foreground/90' : '',
+          span.code ? 'font-mono bg-border' : '',
           span.href ? 'underline' : '',
         ]
           .filter(Boolean)
@@ -34,14 +32,14 @@ function InlineSpans({ spans, muted, linkColor }: { spans: MarkdownInline[]; mut
           ...(span.href ? { color: linkColor } : null),
         };
         return (
-          <Text
+          <StreamingSpan
             key={index}
             className={classes}
             style={style}
-            onPress={span.href ? () => void Linking.openURL(span.href as string).catch(() => undefined) : undefined}
-          >
-            {span.text}
-          </Text>
+            onPress={span.href ? () => open(span.href as string) : undefined}
+            text={span.text}
+            streaming={streaming}
+          />
         );
       })}
     </>
@@ -58,18 +56,19 @@ const HEADING_CLASSES = [
 ];
 
 /** Render markdown prose (assistant replies) with native Text views. */
-export function MarkdownText({ text, muted = false }: { text: string; muted?: boolean }) {
+export function MarkdownText({ text, muted = false, streaming = false }: { text: string; muted?: boolean; streaming?: boolean }) {
   const blocks = useMemo(() => parseMarkdownBlocks(text), [text]);
   const { color: linkColor } = useResolveClassNames('text-primary');
   const link = typeof linkColor === 'string' ? linkColor : '#4D6BFE';
 
   return (
-    <View className="gap-2">
+    <View className="gap-3">
       {blocks.map((block, index) => {
+        if (block.type === 'code') return <CodeBlock key={index} code={block.text} language={toCodeLanguage(block.language)} />;
         if (block.type === 'heading') {
           return (
             <Text key={index} selectable className={HEADING_CLASSES[Math.min(block.level, 6) - 1]}>
-              <InlineSpans spans={parseInlineMarkdown(block.text)} muted={false} linkColor={link} />
+              <InlineSpans spans={parseInlineMarkdown(block.text)} muted={false} linkColor={link} streaming={streaming && index === blocks.length - 1} />
             </Text>
           );
         }
@@ -78,7 +77,7 @@ export function MarkdownText({ text, muted = false }: { text: string; muted?: bo
           return (
             <View key={index} className="border-l-2 border-border pl-3">
               <Text selectable className="text-[14px] leading-6 text-muted">
-                <InlineSpans spans={parseInlineMarkdown(block.text)} muted linkColor={link} />
+                <InlineSpans spans={parseInlineMarkdown(block.text)} muted linkColor={link} streaming={streaming && index === blocks.length - 1} />
               </Text>
             </View>
           );
@@ -91,20 +90,20 @@ export function MarkdownText({ text, muted = false }: { text: string; muted?: bo
                   {block.headers.map((cell, cellIndex) => (
                     <Text
                       key={cellIndex}
-                      className="min-w-[92px] flex-1 border-r border-border px-2.5 py-2 text-[12px] font-semibold text-foreground"
+                      style={{ width: 160 }} className="border-r border-border px-3 py-2 text-sm leading-5 font-semibold text-foreground"
                     >
-                      {cell}
+                      <InlineSpans spans={parseInlineMarkdown(cell)} muted={false} linkColor={link} />
                     </Text>
                   ))}
                 </View>
                 {block.rows.map((row, rowIndex) => (
                   <View key={rowIndex} className="flex-row border-t border-border">
-                    {row.map((cell, cellIndex) => (
+                    {block.headers.map((_, cellIndex) => (
                       <Text
                         key={cellIndex}
-                        className="min-w-[92px] flex-1 border-r border-border px-2.5 py-2 text-[12px] leading-4 text-foreground/90"
+                        style={{ width: 160 }} className="border-r border-border px-3 py-2 text-sm leading-5 text-foreground"
                       >
-                        {cell}
+                        <InlineSpans spans={parseInlineMarkdown(row[cellIndex] ?? '')} muted={false} linkColor={link} />
                       </Text>
                     ))}
                   </View>
@@ -117,12 +116,13 @@ export function MarkdownText({ text, muted = false }: { text: string; muted?: bo
           return (
             <View key={index} className="gap-1">
               {block.items.map((item, itemIndex) => (
+                item.children ? <View key={itemIndex} className="pl-4"><MarkdownText text={item.text} muted={muted} streaming={streaming} /></View> :
                 <View key={itemIndex} className="flex-row gap-2 pr-1">
                   <Text className={muted ? 'text-[13px] leading-5 text-muted' : 'text-[15px] leading-[24px] text-muted'}>
-                    {item.checked === undefined ? (block.ordered ? itemIndex + 1 + '.' : '•') : item.checked ? '☑' : '☐'}
+                    {item.checked === undefined ? (block.ordered ? (block.start ?? 1) + itemIndex + '.' : '•') : item.checked ? '☑' : '☐'}
                   </Text>
                   <Text selectable className={muted ? 'flex-1 text-[13px] leading-5 text-muted' : 'flex-1 text-[15px] leading-[24px] text-foreground'}>
-                    <InlineSpans spans={parseInlineMarkdown(item.text)} muted={muted} linkColor={link} />
+                    <InlineSpans spans={parseInlineMarkdown(item.text)} muted={muted} linkColor={link} streaming={streaming && index === blocks.length - 1 && itemIndex === block.items.length - 1} />
                   </Text>
                 </View>
               ))}
@@ -134,13 +134,13 @@ export function MarkdownText({ text, muted = false }: { text: string; muted?: bo
         if (hasImage) {
           return (
             <View key={index} className="gap-2">
-              <InlineSpans spans={spans} muted={muted} linkColor={link} />
+              {spans.map((span, i) => span.image !== undefined ? <RemoteImage key={i} image={{ url: span.image, name: span.text }} /> : <Text key={i} selectable className="text-[15px] leading-6 text-foreground"><InlineSpans spans={[span]} muted={muted} linkColor={link} /></Text>)}
             </View>
           );
         }
         return (
           <Text key={index} selectable className={muted ? 'text-[13px] leading-5 text-muted' : 'text-[15px] leading-[24px] text-foreground'}>
-            <InlineSpans spans={spans} muted={muted} linkColor={link} />
+            <InlineSpans spans={spans} muted={muted} linkColor={link} streaming={streaming && index === blocks.length - 1} />
           </Text>
         );
       })}

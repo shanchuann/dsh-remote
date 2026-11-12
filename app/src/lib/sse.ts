@@ -255,7 +255,7 @@ export class SseConnection {
     const { minBackoffMs = DEFAULT_MIN_BACKOFF_MS, maxBackoffMs = DEFAULT_MAX_BACKOFF_MS } = this.options;
     const base = Math.min(maxBackoffMs, minBackoffMs * Math.pow(2, this.attempt));
     // Up to 20% jitter so several devices do not reconnect in lockstep.
-    const delay = Math.round(base * (1 + this.randomFn() * 0.2));
+    const delay = Math.min(maxBackoffMs, Math.round(base * (1 + this.randomFn() * 0.2)));
     this.attempt = Math.min(this.attempt + 1, 16);
     this.reconnectTimer = this.setTimeoutFn(() => {
       this.reconnectTimer = null;

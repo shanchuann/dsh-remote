@@ -131,6 +131,10 @@ SSE 与图片/附件下载额外允许 `?token=<token>`（EventSource 无法自�
 
 映射：DSH `sessionController.list()` 的行；`title` 取行内 projection title 或 `session/title` 事件；`lastMessage` 为最佳努力的最近一条用户/助手文本摘要（Host 端截断到 200 字符）。
 
+插件 0.1.9 起，宿主提供 `workspaceRegistry` 时，每行还包含 `workspaceId`、`workspaceTitle`、`workspacePath`。项目成员关系以宿主注册表为准，`workspaceId: null` 表示电脑端“未分组”，不能仅凭相同 `cwd` 推断归属。不支持该服务的旧宿主省略这些字段。
+
+插件 0.1.10 起，同一响应还包含 `workspaces: [{ id, title, path }]`，它是按桌面顺序返回的完整项目清单，不受会话 `limit` 或 `cursor` 限制，包含没有主对话的项目。手机必须依次读取全部会话分页，再将主对话按真实 ID 放入项目；不能从第一页的目录反推项目数量。清单为 `[]` 表示没有注册项目，缺少该字段才使用旧版兼容分组。有未分组的主对话时另显示“未分组”，其数量不计入注册项目数。
+
 ### 3.4 新建会话
 
 `POST /v1/sessions`
@@ -138,6 +142,8 @@ SSE 与图片/附件下载额外允许 `?token=<token>`（EventSource 无法自�
 ```json
 { "cwd": "D:\\Code\\demo", "agentPreset": "standard" }
 ```
+
+在已注册项目内新建时，使用 `{ "workspaceId": "...", "agentPreset": "standard" }`；`workspaceId` 与 `cwd` 互斥。兼容旧手机的 `cwd` 请求会先通过宿主 `workspaceRegistry.resolveByPath()` 解析已有项目，再以项目 ID 创建，确保电脑端归组；未注册目录继续作为未分组会话创建，不自动注册新项目。
 
 → `{ "sessionId": "session-...", "agentPreset": "standard" }`
 
@@ -392,3 +398,12 @@ App 渲染以下子集，其他类型忽略（可折叠显示）：
 - `POST /v1/sessions/:id/open` 的 `session.snapshot` 包含 `maxMessages` 范围内的**全部**历史记录（含 system/message、注入的 user/message、request/header 等）；App 必须自行过滤渲染（§9.2）。
 - turn 开始时连接会先收到 `session.state {running:true}`，结束后 `session.state {running:false}`（Host 由 turn/start、turn/end 合成）。
 - `approval.request` 使用 90s 超时；超时后 Host 回退给桌面端回答者，App 端会收到 `approval.resolved`（outcome 可能为 `rejected`）。
+
+### 9.7 工作流补充（插件 0.1.14 / Android 0.1.13）
+
+- `session.snapshot.assistantStream` 保留 DSH 的 `{revision, activeAttempt?}` 基线；手机重建 `activeAttempt.stream` 中的 `text-chunks`、`reasoning-chunks` 和独立 `chunk`，随后追加实时 delta。避免进入正在输出的会话或重连时漏掉已输出的前半段。
+- `tool/result` 的调用标识和错误标记可能位于 `data.message.toolCallId / source.callId / isError`。`tool/ptc-dispatch-start` 和 `tool/ptc-dispatch` 使用 `subCallId`，不得与 PTC 根工具混为同一个结果。保留 `meta` 来源、网页 URL、截断标记及图片块。
+- 普通任务来自 `projections.values.todos` 和 `todo/write`；团队任务来自 `projections.values.agentTeam.tasks` 和 `team/task`，按 revision 合并。
+- `GET /v1/sessions/:id/changes/:seq` 返回 DSH `workspaceChanges.summary(sessionId, seq)`；附加 `/:index` 返回对应 `diff`。`seq` 为原始 `workspace/changes` 事件序号。快照不存在返回 `{unavailable:true, reason:"snapshot-released"}`。
+- `GET /v1/sessions/:id/file?path=...&format=text|bytes` 使用宿主 `workspaceFiles` 服务和会话工作区访问范围。文本预览从第 1 行开始最多 3000 行；原始文件下载限制 32 MiB。接口需要设备认证；图片可用 Authorization 请求头，不在 URL 放令牌。缺失文件 404、权限不足 403、能力不存在 503；原始响应禁缓存并设置 `nosniff`。
+- `deliverables/presented` 保留文件路径与说明；回复末尾补充成功写入/编辑的文件链接。绝对路径、相对工作区路径和 `file:` 链接统一经认证文件接口读取，网页链接仍交给系统浏览器。

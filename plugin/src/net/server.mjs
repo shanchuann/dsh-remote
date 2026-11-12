@@ -6,6 +6,8 @@
  * JSON automatically.
  */
 import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { ApiError, apiError } from "./errors.mjs";
 import {
   clientIp,
@@ -122,6 +124,24 @@ export function createRemoteServer(options) {
 
   const routes = [
     {
+      method: 'GET',
+      pattern: /^\/v1\/sessions\/([^/]+)\/changes\/(\d+)(?:\/(\d+))?$/,
+      handler: async ({ params }) => ({ body: await service.changes(decodeParam(params[0]), params[1], params[2]) })
+    },
+    {
+      method: 'GET',
+      pattern: /^\/v1\/sessions\/([^/]+)\/file$/,
+      handler: async ({ params, query, res }) => {
+        const result = await service.readFile(decodeParam(params[0]), query);
+        if (query.get('format') === 'text') return { body: result };
+        const data = result.data;
+        res.writeHead(200, { 'content-type': sniffImageType(data), 'content-length': String(data.length),
+          'cache-control': 'no-store', 'x-content-type-options': 'nosniff' });
+        res.end(data);
+        return null;
+      }
+    },
+    {
       method: "GET",
       pattern: /^\/v1\/health$/,
       public: true,
@@ -146,6 +166,11 @@ export function createRemoteServer(options) {
       queryToken: true,
       streaming: true,
       handler: handleEvents
+    },
+    {
+      method: "GET",
+      pattern: /^\/v1\/attachments\/([^/]+)$/,
+      handler: handleAttachment
     },
     {
       method: "GET",
@@ -241,6 +266,42 @@ export function createRemoteServer(options) {
       }
     }
   ];
+
+  const attachmentsRoot = options.attachmentsRoot;
+
+  function sniffImageType(buffer) {
+    if (buffer.length >= 8 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return "image/png";
+    if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
+    if (buffer.length >= 6 && buffer.toString("ascii", 0, 6).startsWith("GIF8")) return "image/gif";
+    if (buffer.length >= 12 && buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP") return "image/webp";
+    return "application/octet-stream";
+  }
+
+  /** GET /v1/attachments/:id — serves a DSH attachment object to a paired device. */
+  async function handleAttachment({ params, res }) {
+    const raw = decodeParam(params[0] ?? "");
+    const match = /^sha256:([a-f0-9]{64})$/.exec(raw);
+    if (match === null) throw apiError("invalid-argument", "attachmentId must be sha256:<hex>");
+    if (typeof attachmentsRoot !== "string" || attachmentsRoot.length === 0) {
+      throw apiError("internal", "attachment storage is not configured");
+    }
+    const hex = match[1];
+    let buffer;
+    try {
+      buffer = await readFile(join(attachmentsRoot, hex.slice(0, 2), hex));
+    } catch {
+      throw apiError("not-found", "attachment not found");
+    }
+    const type = sniffImageType(buffer);
+    res.writeHead(200, {
+      "content-type": type,
+      "content-length": String(buffer.length),
+      "cache-control": "private, max-age=86400",
+      "x-content-type-options": "nosniff"
+    });
+    res.end(buffer);
+    return null;
+  }
 
   async function handle(req, res) {
     const startedAt = now();

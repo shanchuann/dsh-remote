@@ -30,12 +30,18 @@ import {
 import { ApiError, describeError, isApiError, isClientTimeZoneError } from './errors';
 import { randomUuid } from './ids';
 import { isValidPairingCode, normalizeBaseUrl } from './pairing';
+import { mergeTeamTask, teamTasksFromProjection } from './task-state';
+import { readSessionCatalog } from './projects';
 import {
   appendEvent,
   applyAssistantFrame,
   applySessionStatus,
+  applySessionEventToRows,
+  cwdFromEvent,
   emptyStreaming,
+  streamingFromSnapshot,
   filterPendingByEvents,
+  historyBoundary,
   mergeApproval,
   mergeEventLists,
   modelFromEvent,
@@ -67,6 +73,9 @@ import type {
   SessionStatePayload,
   SessionStatusPayload,
   SnapshotPayload,
+  WorkspaceRow,
+  WorkspaceChangeSummary,
+  WorkspaceDiff,
 } from './types';
 import { PROTOCOL_VERSION } from './types';
 
@@ -95,6 +104,9 @@ export interface RemoteActions {
   openSession(id: string): Promise<void>;
   /** Page backwards through the open session's history (protocol 3.6). */
   loadOlderHistory(): Promise<void>;
+  loadChanges(sessionId: string, seq: number): Promise<WorkspaceChangeSummary>;
+  loadDiff(sessionId: string, seq: number, index: number): Promise<WorkspaceDiff>;
+  readFile(sessionId: string, path: string): Promise<{ text: string; eof?: boolean; path?: string }>;
   closeSession(): Promise<void>;
   sendPrompt(text: string, options?: { mode?: 'queue' | 'steer'; images?: PromptImage[] }): Promise<void>;
   cancel(): Promise<void>;
@@ -112,6 +124,7 @@ export interface RemoteActions {
 export interface RemoteState {
   connection: ConnectionState;
   sessions: SessionRow[];
+  workspaces?: WorkspaceRow[];
   sessionsLoading: boolean;
   /** Error from the session list refresh (kept separate from connection.error). */
   sessionsError?: string;
@@ -141,8 +154,18 @@ function createEmptyCurrent(): CurrentSessionState {
   };
 }
 
+// The device token lives in memory so attachment images can authenticate
+// their own GET requests without persisting it a second place.
+let activeToken: string | null = null;
+
+/** Current device token for network image headers (null when disconnected). */
+export function getActiveToken(): string | null {
+  return activeToken;
+}
+
 export const useRemoteStore = create<RemoteState>()((set, get) => {
   let client: RemoteClient | null = null;
+  let sessionGeneration = 0;
   let unsubscribers: (() => void)[] = [];
   // True once the SSE stream has opened at least once on this client, so the
   // next open() is a reconnect that must re-open the active session.
@@ -207,7 +230,7 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
     try {
       await active.openSession(sessionId);
     } catch (error) {
-      set((state) => ({
+      set((state) => state.current.sessionId !== sessionId || client !== active ? {} : ({
         current: { ...state.current, error: describeError(error) },
       }));
     }
@@ -218,19 +241,27 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
     const events = replaceEvents(snapshot.records);
     const title = titleFromProjections(snapshot.projections);
     const model = modelFromProjections(snapshot.projections);
+    const cwd = events.reduce<string | undefined>((value, event) => cwdFromEvent(event) ?? value, snapshot.header?.cwd);
     set((state) => {
       if (state.current.sessionId !== snapshot.sessionId) return {};
       return {
+        sessions: state.sessions.map((row) => row.sessionId === snapshot.sessionId ? {
+          ...row, ...(title === undefined ? {} : { title }), ...(model === undefined ? {} : { model }),
+          ...(cwd === undefined ? {} : { cwd }),
+        } : row),
         current: {
           ...state.current,
           events,
+          todos: snapshot.projections?.values?.todos,
+          teamTasks: teamTasksFromProjection(snapshot.projections?.values?.agentTeam),
           loading: false,
           error: undefined,
-          streaming: emptyStreaming(),
+          streaming: streamingFromSnapshot(snapshot.assistantStream),
           hasMore: snapshot.hasMore === true,
-          cursor: typeof snapshot.cursor === 'number' ? snapshot.cursor : null,
+          cursor: historyBoundary(events, snapshot.cursor),
           title: title ?? state.current.title,
           model: model ?? state.current.model,
+          cwd: cwd ?? state.current.cwd,
           pendingUser: filterPendingByEvents(state.current.pendingUser, events),
         },
       };
@@ -244,7 +275,8 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
     // assistant/message never races ahead of text that belongs before it.
     flushAssistantFrames();
     set((state) => {
-      if (state.current.sessionId !== payload.sessionId) return {};
+      const sessions = applySessionEventToRows(state.sessions, payload.sessionId, event);
+      if (state.current.sessionId !== payload.sessionId) return { sessions };
       const runningHint = runningFromEvent(event);
       const nextRunning = runningHint === undefined ? state.current.running : runningHint;
       const pendingUser =
@@ -252,13 +284,17 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
           ? removeConfirmedPending(state.current.pendingUser, event)
           : state.current.pendingUser;
       return {
+        sessions,
         current: {
           ...state.current,
           events: appendEvent(state.current.events, event),
+          teamTasks: event.type === "team/task" ? mergeTeamTask(state.current.teamTasks, event.data) : state.current.teamTasks,
+          todos: event.type === "todo/write" ? event.data : event.type === "turn/start" ? undefined : state.current.todos,
           streaming: event.type === 'assistant/message' ? emptyStreaming() : state.current.streaming,
           pendingUser,
           title: titleFromEvent(event) ?? state.current.title,
           model: modelFromEvent(event) ?? state.current.model,
+          cwd: cwdFromEvent(event) ?? state.current.cwd,
           running: nextRunning,
         },
       };
@@ -280,14 +316,15 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
   function applySessionState(payload: SessionStatePayload): void {
     const next = payload?.state;
     if (!next || typeof next !== 'object') return;
-    const running = next.running === true;
+    flushAssistantFrames();
     set((state) => {
       if (state.current.sessionId !== payload.sessionId) return {};
+      const running = typeof next.running === 'boolean' ? next.running : state.current.running;
       return {
         current: {
           ...state.current,
           running,
-          active: next.active !== false,
+          active: typeof next.active === 'boolean' ? next.active : state.current.active,
           // A finished turn must not leave a spinner behind.
           streaming: running ? state.current.streaming : { ...state.current.streaming, active: false },
         },
@@ -301,7 +338,9 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
       sessions: applySessionStatus(state.sessions, payload),
       current:
         state.current.sessionId === payload.sessionId
-          ? { ...state.current, running: payload.running === true, active: payload.active !== false }
+          ? { ...state.current,
+              running: typeof payload.running === 'boolean' ? payload.running : state.current.running,
+              active: typeof payload.active === 'boolean' ? payload.active : state.current.active }
           : state.current,
     }));
   }
@@ -376,6 +415,14 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
     offs.push(next.on('assistant', (payload) => applyAssistant(payload)));
     offs.push(next.on('state', (payload) => applySessionState(payload)));
     offs.push(next.on('status', (payload) => applyStatusFrame(payload)));
+    offs.push(next.on('subscriptionClosed', (payload) => {
+      if (payload.reason === 'replaced' || payload.reason === 'client-close' || payload.reason === 'closed') return;
+      flushAssistantFrames();
+      set((state) => state.current.sessionId !== payload.sessionId ? {} : ({
+        current: { ...state.current, loading: false, running: false,
+          streaming: { ...state.current.streaming, active: false }, error: '会话实时连接已关闭，请重新打开对话' },
+      }));
+    }));
 
     offs.push(
       next.on('listChanged', (change) => {
@@ -415,6 +462,8 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
         // The token was revoked (desktop removed this device) or the host
         // restarted with fresh state: stop retrying and ask for a new pairing.
         void clearToken();
+        activeToken = null;
+        next.disconnect();
         set((state) => ({
           connection: {
             ...state.connection,
@@ -422,6 +471,8 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
             needsPairing: true,
             error: '认证已失效，请重新配对',
           },
+          current: { ...state.current, loading: false, running: false,
+            streaming: { ...state.current.streaming, active: false } },
         }));
       }),
     );
@@ -434,7 +485,7 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
     requestId: string,
     error: unknown,
   ): void {
-    setState((state) => ({
+    setState((state) => !state.current.pendingUser.some((item) => item.requestId === requestId) ? {} : ({
       current: {
         ...state.current,
         error: describeError(error),
@@ -474,6 +525,7 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
             throw new ApiError(0, 'protocol-unsupported', 'Host 协议版本不兼容（' + result.protocol + '）');
           }
           await saveToken(result.token);
+          activeToken = result.token;
           const next = new RemoteClient({ baseUrl: target, token: result.token });
           const health = await next.health();
           if (typeof health.protocol === 'number' && health.protocol !== PROTOCOL_VERSION) {
@@ -507,6 +559,7 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
         } catch (error) {
           lastError = error;
           detachClient();
+          activeToken = null;
           await clearToken();
           await clearConnectionMeta();
           if (index === candidates.length - 1) break;
@@ -528,6 +581,7 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
           error: undefined,
         },
       }));
+      activeToken = token;
       let next: RemoteClient | null = null;
       try {
         next = new RemoteClient({ baseUrl: meta.baseUrl, token });
@@ -560,6 +614,12 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
         return true;
       } catch (error) {
         next?.disconnect();
+        if (isApiError(error) && (error.status === 401 || error.status === 403)) {
+          activeToken = null;
+          await clearToken();
+          set((state) => ({ connection: { ...state.connection, status: 'error', needsPairing: true, error: '认证已失效，请重新配对' } }));
+          return false;
+        }
         setConnectionError(describeError(error));
         return false;
       }
@@ -589,6 +649,8 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
     },
 
     async disconnect() {
+      sessionGeneration += 1;
+      activeToken = null;
       flushAssistantFrames();
       const sessionId = get().current.sessionId;
       const active = client;
@@ -604,6 +666,7 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
       set({
         connection: { status: 'idle' },
         sessions: [],
+        workspaces: undefined,
         sessionsLoading: false,
         sessionsError: undefined,
         current: createEmptyCurrent(),
@@ -619,10 +682,11 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
       if (!active) return;
       set({ sessionsLoading: true, sessionsError: undefined });
       try {
-        const page = await active.listSessions({ limit: 50 });
-        const rows = Array.isArray(page?.items) ? page.items.filter((row) => typeof row?.sessionId === 'string') : [];
-        set({ sessions: rows, sessionsLoading: false });
+        const catalog = await readSessionCatalog((cursor) => active.listSessions({ limit: 100, cursor }));
+        if (client !== active) return;
+        set({ ...catalog, sessionsLoading: false });
       } catch (error) {
+        if (client !== active) return;
         set({ sessionsLoading: false, sessionsError: describeError(error) });
         if (isApiError(error) && error.code === 'unauthorized') setConnectionError('认证已失效，请重新配对');
       }
@@ -641,6 +705,7 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
     },
 
     async openSession(id) {
+      const generation = ++sessionGeneration;
       flushAssistantFrames();
       const active = requireClient();
       const row = get().sessions.find((item) => item.sessionId === id);
@@ -659,6 +724,7 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
           sessionId: id,
           title: row?.title ?? undefined,
           model: row?.model ?? undefined,
+          cwd: row?.cwd,
           running: row?.running === true,
           active: row?.active !== false,
           loading: true,
@@ -668,15 +734,26 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
       }));
       if (!get().models) void get().actions.loadModels();
       try {
+        const detail = await active.getSession(id);
+        if (client !== active || get().current.sessionId !== id || generation !== sessionGeneration) return;
+        set((state) => ({ current: { ...state.current,
+          active: typeof detail.state?.active === 'boolean' ? detail.state.active : state.current.active,
+          running: typeof detail.state?.running === 'boolean' ? detail.state.running : state.current.running,
+          cwd: detail.header?.cwd ?? state.current.cwd,
+        } }));
         await active.openSession(id);
       } catch (error) {
-        set((state) => ({
+        set((state) => state.current.sessionId !== id || client !== active || generation !== sessionGeneration ? {} : ({
           current: { ...state.current, loading: false, error: describeError(error) },
         }));
       }
     },
 
+    loadChanges(sessionId, seq) { return requireClient().changes(sessionId, seq); },
+    loadDiff(sessionId, seq, index) { return requireClient().diff(sessionId, seq, index); },
+    readFile(sessionId, path) { return requireClient().readFile(sessionId, path); },
     async loadOlderHistory() {
+      const generation = sessionGeneration;
       const active = client;
       const sessionId = get().current.sessionId;
       if (!active || !sessionId) return;
@@ -685,31 +762,36 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
       if (typeof cursor !== 'number' || cursor <= 0) return;
       try {
         const page = await active.history(sessionId, {
-          beforeSeq: Math.max(1, cursor - 1),
+          beforeSeq: Math.max(0, cursor - 1),
           maxMessages: 100,
         });
+        if (client !== active || get().current.sessionId !== sessionId || generation !== sessionGeneration) return;
         const older = replaceEvents(page.records);
         if (older.length === 0) {
-          set((state) => ({ current: { ...state.current, hasMore: page.hasMore === true } }));
+          set((state) => ({ current: { ...state.current, hasMore: false } }));
           return;
         }
         set((state) => ({
           current: {
             ...state.current,
             events: mergeEventLists(older, state.current.events),
-            cursor: typeof page.cursor === 'number' ? page.cursor : null,
-            hasMore: page.hasMore === true,
+            cursor: historyBoundary(older, page.cursor),
+            hasMore: page.hasMore === true && (historyBoundary(older, page.cursor) ?? cursor) < cursor,
           },
         }));
       } catch (error) {
-        set((state) => ({ current: { ...state.current, error: describeError(error) } }));
+        set((state) => state.current.sessionId !== sessionId || client !== active || generation !== sessionGeneration ? {} : ({ current: { ...state.current, error: describeError(error) } }));
       }
     },
 
     async closeSession() {
+      sessionGeneration += 1;
       flushAssistantFrames();
       const sessionId = get().current.sessionId;
       const active = client;
+      // Release UI ownership before awaiting the network. Navigating to a
+      // child can open its snapshot while the previous close is in flight.
+      set({ current: createEmptyCurrent() });
       if (active && sessionId) {
         try {
           await active.closeSession(sessionId);
@@ -717,7 +799,6 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
           // Closing is best effort: leaving the screen must not block.
         }
       }
-      set({ current: createEmptyCurrent() });
     },
 
     async sendPrompt(text, options) {
@@ -732,12 +813,14 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
         text: trimmed || '（图片 ×' + images.length + '）',
         time: Date.now(),
         status: 'sending',
+        images,
       };
       set((state) => ({
         current: {
           ...state.current,
           error: undefined,
           pendingUser: [...state.current.pendingUser, pending],
+          imagePreviews: { ...state.current.imagePreviews, [requestId]: images },
         },
       }));
       const active = requireClient();
@@ -788,14 +871,10 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
       const active = requireClient();
       try {
         await active.answerApproval(id, decision);
-        set((state) => ({
-          current: { ...state.current, pendingApprovals: removeApproval(state.current.pendingApprovals, id) },
-        }));
+        resolveApprovalById(id);
       } catch (error) {
         if (isApiError(error) && error.code === 'approval-gone') {
-          set((state) => ({
-            current: { ...state.current, pendingApprovals: removeApproval(state.current.pendingApprovals, id) },
-          }));
+          resolveApprovalById(id);
           return;
         }
         set((state) => ({ current: { ...state.current, error: describeError(error) } }));
@@ -809,7 +888,7 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
         const result = await requireClient().selectModel(sessionId, selection);
         const selected = result?.selected && typeof result.selected.provider === 'string' ? result.selected : selection;
         set((state) => ({
-          current: { ...state.current, model: selected },
+          current: state.current.sessionId === sessionId ? { ...state.current, model: selected } : state.current,
           sessions: state.sessions.map((row) =>
             row.sessionId === sessionId ? { ...row, model: selected } : row,
           ),
@@ -882,6 +961,7 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
   return {
     connection: { status: 'idle' },
     sessions: [],
+    workspaces: undefined,
     sessionsLoading: false,
     sessionsError: undefined,
     current: createEmptyCurrent(),

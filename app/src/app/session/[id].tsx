@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ComponentRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { BlurTargetView } from "expo-blur";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 
 import {
   Menu,
@@ -22,7 +24,6 @@ import {
   MessageList,
   ModelPicker,
   defaultSelection,
-  modelChipLabel,
   normalizeModelCatalog,
   selectionKey,
   shortenPath,
@@ -31,6 +32,10 @@ import type { MessageScrollerHandle } from "../../components/message-scroller";
 import { useRemoteStore } from "../../lib/store";
 import type { ModelSelection, PromptImage } from "../../lib/types";
 import { buildTranscript } from "../../lib/transcript";
+import { sessionSubagents } from "../../lib/projects";
+import { TaskPanel } from "../../components/chat/task-panel";
+import { SessionFilesProvider } from "../../components/chat/session-files";
+import { SubagentSheet } from "../../components/chat/subagent-sheet";
 
 /** Resolves expo-router's string | string[] param into a plain id. */
 function useSessionIdParam(): string | undefined {
@@ -57,61 +62,64 @@ function MoreDots() {
  */
 export default function SessionScreen() {
   const sessionId = useSessionIdParam();
+  const blurTarget = useRef<ComponentRef<typeof View> | null>(null);
+  const insets = useSafeAreaInsets();
+  const [headerHeight, setHeaderHeight] = useState(insets.top + 56);
   const listRef = useRef<MessageScrollerHandle>(null);
   /** Whether the list is pinned to the newest message (message-scroller's state). */
   const followingRef = useRef(true);
 
-  const currentSessionId = useRemoteStore((state) => state.current.sessionId);
+  const teamTasks = useRemoteStore((state) => state.current.teamTasks);
+  const todos = useRemoteStore((state) => state.current.todos);
   const title = useRemoteStore((state) => state.current.title);
   const running = useRemoteStore((state) => state.current.running);
   const events = useRemoteStore((state) => state.current.events);
   const streaming = useRemoteStore((state) => state.current.streaming);
   const pendingUser = useRemoteStore((state) => state.current.pendingUser);
+  const imagePreviews = useRemoteStore((state) => state.current.imagePreviews);
+  const [visit, setVisit] = useState(0);
   const pendingApprovals = useRemoteStore((state) => state.current.pendingApprovals);
   const loading = useRemoteStore((state) => state.current.loading);
   const hasMore = useRemoteStore((state) => state.current.hasMore);
   const sessionError = useRemoteStore((state) => state.current.error);
   const model = useRemoteStore((state) => state.current.model);
+  const cwd = useRemoteStore((state) => state.current.cwd);
   const models = useRemoteStore((state) => state.models);
   const sessions = useRemoteStore((state) => state.sessions);
+  const sessionsLoading = useRemoteStore((state) => state.sessionsLoading);
+  const sessionsError = useRemoteStore((state) => state.sessionsError);
   const connection = useRemoteStore((state) => state.connection);
   const host = useRemoteStore((state) => state.host);
   const actions = useRemoteStore((state) => state.actions);
 
   const [draft, setDraft] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [subagentsOpen, setSubagentsOpen] = useState(false);
   const [showTurns, setShowTurns] = useState(false);
   const [answering, setAnswering] = useState<string | null>(null);
   const [loadingOlder, setLoadingOlder] = useState(false);
 
-  // Open the session on enter, close it on leave; the store re-opens on reconnect.
-  useEffect(() => {
-    if (!sessionId) return;
-    void actions.openSession(sessionId);
-    return () => {
-      void actions.closeSession();
-    };
-  }, [actions, sessionId]);
-
-  // A cold start (or a deep link) can mount this screen before the store has
-  // reconnected: open the session again once the link is live.
   const connected = connection.status === "connected";
-  useEffect(() => {
+  // Only the focused screen owns a subscription. A parent remains mounted
+  // while viewing a child task and must not take the shared store back.
+  useFocusEffect(useCallback(() => {
     if (!sessionId || !connected) return;
-    if (currentSessionId === sessionId) return;
+    followingRef.current = true;
+    setVisit((value) => value + 1);
     void actions.openSession(sessionId);
-  }, [actions, connected, currentSessionId, sessionId]);
+    return () => { void actions.closeSession(); };
+  }, [actions, connected, sessionId]));
 
   const items = useMemo(
-    () => buildTranscript(events, streaming, { pending: pendingUser }),
-    [events, pendingUser, streaming],
+    () => buildTranscript(events, streaming, { pending: pendingUser, imagePreviews }),
+    [events, pendingUser, streaming, imagePreviews],
   );
 
   const groups = useMemo(() => normalizeModelCatalog(models), [models]);
   const selection: ModelSelection | undefined = model ?? defaultSelection(models);
-  const chipLabel = modelChipLabel(groups, selection);
+  const subagents = useMemo(() => sessionSubagents(sessions, sessionId), [sessions, sessionId]);
   const subtitleSource =
-    sessions.find((row) => row.sessionId === sessionId)?.cwd ?? host?.defaultCwd;
+    cwd ?? sessions.find((row) => row.sessionId === sessionId)?.cwd ?? host?.defaultCwd;
   const subtitle = subtitleSource ? shortenPath(subtitleSource, 44) : undefined;
   const pendingApproval = pendingApprovals[0];
 
@@ -127,6 +135,13 @@ export default function SessionScreen() {
   useEffect(() => {
     if (pickerOpen && !models) void actions.loadModels();
   }, [actions, models, pickerOpen]);
+
+  useEffect(() => {
+    if (!subagentsOpen || !connected) return;
+    void actions.refreshSessions();
+    const timer = setInterval(() => void actions.refreshSessions(), 5000);
+    return () => clearInterval(timer);
+  }, [actions, connected, subagentsOpen]);
 
   const send = (text: string, images?: PromptImage[]) => {
     const trimmed = text.trim();
@@ -177,72 +192,29 @@ export default function SessionScreen() {
   const showSkeleton = loading && items.length === 0;
   const showEmpty = !loading && !running && items.length === 0;
 
-  // A freshly opened session must start at the newest message, and a finished
-  // load must settle there even when the list mounted before its content.
-  useEffect(() => {
-    if (loading || !sessionId) return;
-    let cancelled = false;
-    const stamps = [0, 120, 320, 700];
-    const timers = stamps.map((delay) =>
-      setTimeout(() => {
-        if (!cancelled && followingRef.current) listRef.current?.scrollToEnd(false);
-      }, delay),
-    );
-    return () => {
-      cancelled = true;
-      timers.forEach((timer) => clearTimeout(timer));
-    };
-  }, [loading, sessionId]);
-
   return (
-    <View className="flex-1 bg-background">
-      <ChatHeader
-        title={title?.trim() || "新会话"}
-        subtitle={subtitle}
-        modelLabel={chipLabel}
-        running={running}
-        connected={connection.status === "connected"}
-        onBack={() => {
-          if (router.canGoBack()) router.back();
-          else router.replace("/sessions");
-        }}
-        onPressModel={() => setPickerOpen(true)}
-        trailing={
-          <Menu>
-            <MenuTrigger accessibilityLabel="更多选项">
-              <View className="size-10 items-center justify-center rounded-full active:bg-surface">
-                <MoreDots />
-              </View>
-            </MenuTrigger>
-            <MenuContent align="end" width={220}>
-              <MenuItem onSelect={() => setPickerOpen(true)}>切换模型</MenuItem>
-              <MenuSeparator />
-              <MenuCheckboxItem
-                checked={showTurns}
-                onCheckedChange={setShowTurns}
-              >
-                显示轮次分隔
-              </MenuCheckboxItem>
-            </MenuContent>
-          </Menu>
-        }
-      />
+    <SessionFilesProvider key={sessionId} sessionId={sessionId}><View className="flex-1 bg-background">
+      <BlurTargetView ref={blurTarget} style={{ flex: 1 }}>
+      <View style={connected ? undefined : { paddingTop: headerHeight }}>
       <ConnectionBanner
         status={connection.status}
         error={connection.status === "error" ? connection.error : undefined}
         needsPairing={connection.needsPairing === true}
         onRepair={() => router.replace("/")}
       />
+      </View>
       <KeyboardAvoider
         className="flex-1"
         onInsetChange={handleKeyboardInset}
       >
         {showSkeleton ? (
-          <ChatSkeleton />
+          <View className="flex-1" style={{ paddingTop: headerHeight }}><ChatSkeleton /></View>
         ) : showEmpty ? (
-          <EmptyChat onPick={pickSuggestion} />
+          <View className="flex-1" style={{ paddingTop: headerHeight }}><EmptyChat onPick={pickSuggestion} /></View>
         ) : (
           <MessageList
+            topInset={connected ? headerHeight + 16 : 0}
+            key={sessionId + ':' + visit}
             ref={listRef}
             items={items}
             running={running}
@@ -254,6 +226,7 @@ export default function SessionScreen() {
             onFollowChange={handleFollowChange}
           />
         )}
+        {showSkeleton ? null : <TaskPanel key={sessionId} value={todos} teamTasks={teamTasks} />}
         {pendingApproval ? (
           <ApprovalSheet
             approval={pendingApproval}
@@ -275,6 +248,38 @@ export default function SessionScreen() {
           />
         )}
       </KeyboardAvoider>
+      </BlurTargetView>
+      <ChatHeader
+        blurTarget={blurTarget}
+        onLayout={(event) => setHeaderHeight(event.nativeEvent.layout.height)}
+        title={title?.trim() || "新会话"}
+        subtitle={subtitle}
+        subagentCount={subagents.length}
+        subagentsRunning={subagents.some((agent) => agent.running)}
+        running={running}
+        connected={connected}
+        onBack={() => {
+          if (router.canGoBack()) router.back();
+          else router.replace("/sessions");
+        }}
+        onPressSubagents={() => setSubagentsOpen(true)}
+        trailing={
+          <Menu>
+            <MenuTrigger accessibilityLabel="更多选项">
+              <View className="size-12 items-center justify-center rounded-full active:bg-surface">
+                <MoreDots />
+              </View>
+            </MenuTrigger>
+            <MenuContent align="end" width={220}>
+              <MenuItem onSelect={() => setPickerOpen(true)}>切换模型</MenuItem>
+              <MenuSeparator />
+              <MenuCheckboxItem checked={showTurns} onCheckedChange={setShowTurns}>
+                显示轮次分隔
+              </MenuCheckboxItem>
+            </MenuContent>
+          </Menu>
+        }
+      />
       <ModelPicker
         visible={pickerOpen}
         groups={groups}
@@ -283,10 +288,22 @@ export default function SessionScreen() {
         onSelect={selectModel}
         onClose={() => setPickerOpen(false)}
       />
+      <SubagentSheet
+        visible={subagentsOpen}
+        agents={subagents}
+        loading={sessionsLoading}
+        error={sessionsError}
+        onClose={() => setSubagentsOpen(false)}
+        onRefresh={() => void actions.refreshSessions()}
+        onOpen={(id) => {
+          setSubagentsOpen(false);
+          router.push({ pathname: '/session/[id]', params: { id } });
+        }}
+      />
       <ErrorToast
         message={errorMessage}
         onDismiss={() => actions.clearError()}
       />
-    </View>
+    </View></SessionFilesProvider>
   );
 }

@@ -48,6 +48,9 @@ test("open pushes a snapshot, then events, assistant frames, and state", async (
     assert.equal(snapshot.data.header.id, "session-1");
     assert.deepEqual(snapshot.data.records, []);
     assert.equal(snapshot.data.hasMore, false);
+    const baseline = { revision: 3, activeAttempt: { attemptId: 'live', nextIndex: 1, stream: [{ type: 'text-chunks', texts: ['prefix'] }] } };
+    harness.bridge.emit('session-1', 'snapshot', { header: { id: 'session-1' }, cursor: 1, records: [], assistantStream: baseline });
+    assert.deepEqual((await sse.waitFor('session.snapshot')).data.assistantStream, baseline);
     assert.equal(typeof snapshot.data.cursor, "number");
     assert.ok(snapshot.data.projections);
 

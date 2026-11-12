@@ -15,6 +15,9 @@ const STATUS_BY_CODE = new Map([
   ["stream-unavailable", 409],
   ["approval-gone", 410],
   ["rate-limited", 429],
+  ["not-found", 404],
+  ["forbidden", 403],
+  ["feature-unavailable", 503],
   ["internal", 500]
 ]);
 
