@@ -4,7 +4,7 @@ import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 import { useResolveClassNames } from 'uniwind';
 import type { TranscriptTodo } from '../../../lib/transcript';
-import { CheckIcon, ChevronDownIcon, CloseIcon } from '../../common/icons';
+import { CheckIcon, ChevronDownIcon, ChevronUpIcon, CloseIcon } from '../../common/icons';
 import { useReducedMotionPreference } from '../../../hooks/use-reduced-motion';
 
 const LABELS = { pending: '待处理', 'in-progress': '进行中', completed: '已完成', cancelled: '已取消' };
@@ -41,7 +41,7 @@ function TaskCapsule({ item, index }: { item: TranscriptTodo; index: number }) {
         )}
         <Text className="min-w-0 flex-1 text-sm font-medium leading-5 text-foreground" numberOfLines={open ? undefined : 2}>{item.title}</Text>
         <Text className={'shrink-0 rounded-full px-2 py-1 text-xs leading-4 ' + (done ? 'bg-success/10 text-success' : running ? 'bg-primary/10 text-primary' : 'text-muted')}>{LABELS[item.status]}</Text>
-        <View style={{ transform: [{ rotate: open ? '180deg' : '0deg' }] }}><ChevronDownIcon size={14} color={muted} /></View>
+        {open ? <ChevronUpIcon size={18} color={muted} /> : <ChevronDownIcon size={18} color={muted} />}
       </View>
       {open && progress !== undefined && !done ? (
         <View className="ml-8 gap-2 pb-1 pr-2">

@@ -93,6 +93,87 @@ test('restore clears an invalid token and requests pairing', async () => {
   assert.equal(h.store.getState().connection.needsPairing, true);
 });
 
+test('failed restore preserves pairing and a retry can recover with current Host metadata', async () => {
+  const h = harness();
+  h.FakeClient.healthError = new ApiError(0, 'timeout');
+  assert.equal(await h.actions.restore(), false);
+  assert.equal(h.store.getState().connection.status, 'error');
+  assert.equal(h.token(), 'saved-token');
+  h.FakeClient.healthError = undefined;
+  h.FakeClient.prototype.host = async () => ({ name: '电脑', pluginVersion: '0.1.18' });
+  assert.equal(await h.actions.restore(), true);
+  assert.equal(h.store.getState().connection.status, 'connected');
+  assert.equal(h.store.getState().host.pluginVersion, '0.1.18');
+  assert.equal(h.store.getState().connection.error, undefined);
+});
+
+test('launch and foreground restore share one in-flight connection', async () => {
+  const h = harness();
+  const health = deferred();
+  let requests = 0;
+  h.FakeClient.prototype.health = () => { requests++; return health.promise; };
+  const first = h.actions.restore();
+  const second = h.actions.restore();
+  assert.equal(first, second);
+  await Promise.resolve();
+  await Promise.resolve();
+  health.resolve({ protocol: 1 });
+  assert.equal(await first, true);
+  assert.equal(requests, 1);
+});
+
+test('Host refresh updates both version displays and ignores responses after disconnect', async () => {
+  const h = harness();
+  await h.actions.restore();
+  const client = h.FakeClient.latest;
+  client.host = async () => ({ name: '电脑', pluginVersion: '0.1.19' });
+  await h.actions.refreshHost();
+  assert.equal(h.store.getState().host.pluginVersion, '0.1.19');
+  assert.equal(h.store.getState().connection.host.pluginVersion, '0.1.19');
+  const response = deferred();
+  client.host = () => response.promise;
+  client.devices = () => response.promise;
+  const hostRefresh = h.actions.refreshHost();
+  const deviceRefresh = h.actions.refreshDevices();
+  await h.actions.disconnect();
+  response.resolve({ pluginVersion: 'old', items: [{ deviceId: 'old' }] });
+  await Promise.all([hostRefresh, deviceRefresh]);
+  assert.equal(h.store.getState().host, undefined);
+  assert.deepEqual(h.store.getState().devices, []);
+});
+
+test('removing a device reports failure to its caller without hiding the device', async () => {
+  const h = harness();
+  await h.actions.restore();
+  const device = { deviceId: 'other', name: '手机' };
+  h.store.setState({ devices: [device] });
+  h.FakeClient.latest.deleteDevice = async () => { throw new ApiError(0, 'network'); };
+  await assert.rejects(h.actions.removeDevice('other'), (error) => error.code === 'network');
+  assert.deepEqual(h.store.getState().devices, [device]);
+});
+
+test('pairing does not retry an invalid code against a second address', async () => {
+  const h = harness();
+  let requests = 0;
+  h.FakeClient.pair = async () => { requests++; throw new ApiError(403, 'invalid-code'); };
+  await assert.rejects(h.actions.connect({ baseUrl: 'http://100.64.0.1:8790', altBaseUrl: 'http://192.168.1.1:8790', code: '123456' }));
+  assert.equal(requests, 1);
+});
+
+test('pairing still falls back to the LAN address after a transport failure', async () => {
+  const h = harness();
+  const addresses = [];
+  h.FakeClient.pair = async (baseUrl) => {
+    addresses.push(baseUrl);
+    if (addresses.length === 1) throw new ApiError(0, 'timeout');
+    return { token: 'paired-token', protocol: 1 };
+  };
+  await h.actions.connect({ baseUrl: 'http://100.64.0.1:8790', altBaseUrl: 'http://192.168.1.1:8790', code: '123456' });
+  assert.equal(addresses.length, 2);
+  assert.equal(h.store.getState().connection.baseUrl, 'http://192.168.1.1:8790');
+  assert.equal(h.token(), 'paired-token');
+});
+
 test('refresh stores the complete project catalog with all session pages and clears it on disconnect or legacy host', async () => {
   const h = harness();
   await h.actions.restore();

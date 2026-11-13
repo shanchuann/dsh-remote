@@ -12,6 +12,12 @@ function StreamDelta({ text }: { text: string }) {
 
 /** Resolve only the newest live delta; old prose never replays an animation. */
 export function StreamingSpan({ text, streaming = false, ...props }: TextProps & { text: string; streaming?: boolean }) {
+  // Completed spans need neither native accessibility subscriptions nor animation state.
+  return streaming ? <LiveStreamingSpan text={text} {...props} /> : <Text {...props}>{text}</Text>;
+}
+
+function LiveStreamingSpan({ text, ...props }: TextProps & { text: string }) {
+  const streaming = true;
   const reduce = useReducedMotionPreference();
   const [frame, setFrame] = useState({ text, streaming, prefix: streaming ? 0 : text.length, revision: 0 });
   if (text !== frame.text || streaming !== frame.streaming) {

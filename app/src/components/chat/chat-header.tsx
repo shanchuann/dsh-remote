@@ -13,9 +13,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResolveClassNames, useUniwind } from "uniwind";
 
 import { useReducedMotionPreference } from "../../hooks/use-reduced-motion";
-import { ArrowGlyph, ChevronDownGlyph } from "../../primitives/agent-icons";
+import { ChevronDownGlyph } from "../../primitives/agent-icons";
 import { RunningBar } from "../../primitives/running-bar";
-import { UsersIcon } from "../common/icons";
+import { BackIcon, UsersIcon } from "../common/icons";
 
 // MaskedView 0.3 still types its ref using NativeMethods, removed in RN 0.88.
 const HeaderMask = MaskedView as unknown as ComponentType<ComponentProps<typeof View> & { maskElement: ReactNode }>;
@@ -85,22 +85,11 @@ export function ChatHeader({
   const reduceMotion = useReducedMotionPreference();
   const { color: foreground } = useResolveClassNames("text-foreground");
   const { color: muted } = useResolveClassNames("text-muted");
+  const { backgroundColor } = useResolveClassNames("bg-background");
 
   return (
-    <View pointerEvents="box-none" onLayout={onLayout} style={{ position: "absolute", top: 0, left: 0, right: 0, paddingTop: insets.top }}>
-      <HeaderMask
-        pointerEvents="none"
-        style={[StyleSheet.absoluteFill, { bottom: -28 }]}
-        maskElement={<LinearGradient colors={["black", "black", "transparent"]} locations={[0, 0.65, 1]} style={StyleSheet.absoluteFill} />}
-      >
-        <BlurView
-          blurTarget={blurTarget}
-          blurMethod="dimezisBlurViewSdk31Plus"
-          intensity={85}
-          tint={dark ? "dark" : "light"}
-          style={StyleSheet.absoluteFill}
-        />
-      </HeaderMask>
+    <View pointerEvents="box-none" style={{ position: "absolute", top: 0, left: 0, right: 0 }}>
+      <View pointerEvents="box-none" onLayout={onLayout} className="bg-background" style={{ paddingTop: insets.top }}>
       <View className="min-h-14 flex-row items-center gap-1 px-1 py-1">
         <Pressable
           accessibilityRole="button"
@@ -108,7 +97,7 @@ export function ChatHeader({
           onPress={onBack}
           className="size-12 items-center justify-center rounded-full active:bg-surface"
         >
-          <ArrowGlyph back size={21} color={foreground} strokeWidth={2} />
+          <BackIcon size={24} color={foreground} />
         </Pressable>
         <View className="min-w-0 flex-1 gap-0.5 pr-1">
           <Text
@@ -145,6 +134,23 @@ export function ChatHeader({
         {trailing}
       </View>
       {running && connected ? <RunningBar reduce={reduceMotion} /> : null}
+      </View>
+      {/* Keep the fade inside the header bounds so Android does not clip it. */}
+      <HeaderMask
+        pointerEvents="none"
+        style={{ height: 40 }}
+        maskElement={<LinearGradient colors={["black", "black", "transparent"]} locations={[0, 0.2, 1]} style={StyleSheet.absoluteFill} />}
+      >
+        <BlurView
+          blurTarget={blurTarget}
+          blurMethod="dimezisBlurViewSdk31Plus"
+          intensity={100}
+          blurReductionFactor={2}
+          tint={dark ? "dark" : "light"}
+          style={StyleSheet.absoluteFill}
+        />
+        <LinearGradient colors={[backgroundColor ?? (dark ? '#0e0f13' : '#fcfcfc'), "transparent"]} style={StyleSheet.absoluteFill} />
+      </HeaderMask>
     </View>
   );
 }

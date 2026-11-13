@@ -40,7 +40,7 @@ const CODE_MESSAGES: Record<string, string> = {
   'not-found': '请求的内容不存在',
   'forbidden': 'DSH 未允许访问此文件',
   'feature-unavailable': '桌面端暂不支持此功能，请更新插件或 DSH',
-  network: '无法连接 Host，请检查手机与电脑是否在同一局域网',
+  network: '无法连接 Host，请检查局域网或 Tailscale 连接',
   timeout: '连接 Host 超时',
   aborted: '请求已取消',
   'protocol-version': 'Host 协议版本不兼容',

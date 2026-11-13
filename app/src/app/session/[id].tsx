@@ -1,5 +1,6 @@
+import { MessageActionsProvider } from '../../components/chat/message-actions';
 import { type ComponentRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View } from "react-native";
+import { View, useWindowDimensions } from "react-native";
 import { BlurTargetView } from "expo-blur";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -31,11 +32,12 @@ import {
 import type { MessageScrollerHandle } from "../../components/message-scroller";
 import { useRemoteStore } from "../../lib/store";
 import type { ModelSelection, PromptImage } from "../../lib/types";
-import { buildTranscript } from "../../lib/transcript";
+import { createTranscriptProjector } from "../../lib/transcript";
 import { sessionSubagents } from "../../lib/projects";
 import { TaskPanel } from "../../components/chat/task-panel";
 import { SessionFilesProvider } from "../../components/chat/session-files";
 import { SubagentSheet } from "../../components/chat/subagent-sheet";
+import { taskPanelMaxHeight } from '../../lib/chat-layout';
 
 /** Resolves expo-router's string | string[] param into a plain id. */
 function useSessionIdParam(): string | undefined {
@@ -65,6 +67,10 @@ export default function SessionScreen() {
   const blurTarget = useRef<ComponentRef<typeof View> | null>(null);
   const insets = useSafeAreaInsets();
   const [headerHeight, setHeaderHeight] = useState(insets.top + 56);
+  const { height: windowHeight } = useWindowDimensions();
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const [footerHeight, setFooterHeight] = useState(0);
+  const [controlsHeight, setControlsHeight] = useState(96);
   const listRef = useRef<MessageScrollerHandle>(null);
   /** Whether the list is pinned to the newest message (message-scroller's state). */
   const followingRef = useRef(true);
@@ -110,9 +116,10 @@ export default function SessionScreen() {
     return () => { void actions.closeSession(); };
   }, [actions, connected, sessionId]));
 
+  const projectTranscript = useMemo(() => createTranscriptProjector(), []);
   const items = useMemo(
-    () => buildTranscript(events, streaming, { pending: pendingUser, imagePreviews }),
-    [events, pendingUser, streaming, imagePreviews],
+    () => projectTranscript(events, streaming, { pending: pendingUser, imagePreviews }),
+    [events, pendingUser, streaming, imagePreviews, projectTranscript],
   );
 
   const groups = useMemo(() => normalizeModelCatalog(models), [models]);
@@ -150,6 +157,10 @@ export default function SessionScreen() {
     listRef.current?.scrollToEnd();
     void actions.sendPrompt(trimmed, { images });
   };
+
+  const quoteMessage = useCallback((text: string) => {
+    setDraft(current => [current.trimEnd(), text.split('\n').map(line => '> ' + line).join('\n')].filter(Boolean).join('\n\n') + '\n\n');
+  }, []);
 
   const pickSuggestion = (text: string) => {
     setDraft(text);
@@ -193,8 +204,7 @@ export default function SessionScreen() {
   const showEmpty = !loading && !running && items.length === 0;
 
   return (
-    <SessionFilesProvider key={sessionId} sessionId={sessionId}><View className="flex-1 bg-background">
-      <BlurTargetView ref={blurTarget} style={{ flex: 1 }}>
+    <MessageActionsProvider key={sessionId} sessionId={sessionId ?? ''} onQuote={quoteMessage}><SessionFilesProvider sessionId={sessionId}><View className="flex-1 bg-background">
       <View style={connected ? undefined : { paddingTop: headerHeight }}>
       <ConnectionBanner
         status={connection.status}
@@ -207,13 +217,16 @@ export default function SessionScreen() {
         className="flex-1"
         onInsetChange={handleKeyboardInset}
       >
+        <View className="flex-1" onLayout={event => setViewportHeight(event.nativeEvent.layout.height)}>
+        <BlurTargetView ref={blurTarget} style={{ flex: 1 }}>
         {showSkeleton ? (
           <View className="flex-1" style={{ paddingTop: headerHeight }}><ChatSkeleton /></View>
         ) : showEmpty ? (
-          <View className="flex-1" style={{ paddingTop: headerHeight }}><EmptyChat onPick={pickSuggestion} /></View>
+          <View className="flex-1" style={{ paddingTop: headerHeight, paddingBottom: footerHeight }}><EmptyChat onPick={pickSuggestion} /></View>
         ) : (
           <MessageList
             topInset={connected ? headerHeight + 16 : 0}
+            bottomInset={footerHeight}
             key={sessionId + ':' + visit}
             ref={listRef}
             items={items}
@@ -226,7 +239,10 @@ export default function SessionScreen() {
             onFollowChange={handleFollowChange}
           />
         )}
-        {showSkeleton ? null : <TaskPanel key={sessionId} value={todos} teamTasks={teamTasks} />}
+        </BlurTargetView>
+        {showSkeleton ? null : <View pointerEvents="box-none" className="absolute bottom-0 left-0 right-0" onLayout={event => setFooterHeight(event.nativeEvent.layout.height)}>
+        <TaskPanel key={sessionId} value={todos} teamTasks={teamTasks} maxHeight={taskPanelMaxHeight(viewportHeight || windowHeight, headerHeight, controlsHeight)} />
+        <View pointerEvents="box-none" onLayout={event => setControlsHeight(event.nativeEvent.layout.height)}>
         {pendingApproval ? (
           <ApprovalSheet
             approval={pendingApproval}
@@ -238,6 +254,7 @@ export default function SessionScreen() {
         ) : null}
         {showSkeleton ? null : (
           <Composer
+            blurTarget={blurTarget}
             value={draft}
             onValueChange={setDraft}
             onSend={send}
@@ -247,8 +264,10 @@ export default function SessionScreen() {
             placeholder={running ? "运行中，点右侧停止…" : "给 DSH 发消息…"}
           />
         )}
+        </View>
+        </View>}
+        </View>
       </KeyboardAvoider>
-      </BlurTargetView>
       <ChatHeader
         blurTarget={blurTarget}
         onLayout={(event) => setHeaderHeight(event.nativeEvent.layout.height)}
@@ -304,6 +323,6 @@ export default function SessionScreen() {
         message={errorMessage}
         onDismiss={() => actions.clearError()}
       />
-    </View></SessionFilesProvider>
+    </View></SessionFilesProvider></MessageActionsProvider>
   );
 }

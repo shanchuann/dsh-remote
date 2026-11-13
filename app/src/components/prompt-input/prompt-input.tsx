@@ -1,3 +1,4 @@
+import { VoiceIcon } from '../common/icons';
 import { type ReactNode, type Ref, useEffect, useRef, useState } from "react";
 import {
   Pressable,
@@ -22,7 +23,6 @@ import { useReducedMotionPreference } from "../../hooks/use-reduced-motion";
 import {
   ArrowUpGlyph,
   CrossGlyph,
-  MicGlyph,
   PlusGlyph,
   StopGlyph,
 } from "../../primitives/agent-icons";
@@ -220,6 +220,8 @@ export type PromptInputProps = Omit<
   layout?: "adaptive" | "capsule";
   /** Extra controls beside the + button once the composer opens up. */
   leadingAction?: ReactNode;
+  /** Decorative surface rendered behind the input and controls. */
+  backdrop?: ReactNode;
   disabled?: boolean;
   /** Classes for the composer surface. */
   className?: string;
@@ -253,6 +255,7 @@ export function PromptInput({
   maxRows = 6,
   layout = "adaptive",
   leadingAction,
+  backdrop,
   disabled = false,
   className = "",
   disableAnimation = false,
@@ -455,7 +458,7 @@ export function PromptInput({
             {item.value === "stop" ? (
               <StopGlyph size={12} color={onPrimary} />
             ) : item.value === "voice" ? (
-              <MicGlyph size={20} color={foreground} strokeWidth={1.8} />
+              <VoiceIcon size={24} color={foreground} />
             ) : (
               <ArrowUpGlyph
                 size={18}
@@ -498,8 +501,9 @@ export function PromptInput({
         layout={reduce || layout === "capsule" ? undefined : GLIDE}
         onLayout={({ nativeEvent }) => setWidth(nativeEvent.layout.width)}
         style={[styles.surface, expanded ? styles.card : styles.pill]}
-        className={`${layout === "capsule" ? "bg-transparent" : "bg-surface"} ${disabled ? "opacity-60" : ""} ${className}`}
+        className={`${backdrop ? "" : "bg-surface"} ${disabled ? "opacity-60" : ""} ${className}`}
       >
+      {backdrop}
       {attachments.length > 0 ? (
         <View style={styles.attachments}>
           {attachments.map((attachment) => (

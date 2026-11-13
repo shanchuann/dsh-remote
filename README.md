@@ -18,7 +18,7 @@
 
 ## 界面示例
 
-以下为 Android 实机界面，依次展示连接、项目列表、对话输入和本地语音设置。图片由用户于 2026-11-13 提供；其中的项目名称、路径和会话内容仅为使用示例。
+以下为 Android 实机界面，依次展示连接、项目列表、对话输入和本地语音设置。其中的项目名称、路径和会话内容仅为使用示例。
 
 <table>
   <tr>
@@ -35,7 +35,7 @@
   </tr>
 </table>
 
-图中连接页的“公网连接”为旧版界面文案；当前远程访问使用 Tailscale。各页面的操作说明见[界面示例](docs/screenshots.md)。
+图 1 中连接页的“公网连接”为旧版界面文案；当前远程访问使用 Tailscale。各页面的操作说明见[界面示例](docs/screenshots.md)。
 
 ## 功能与组成
 
@@ -73,7 +73,9 @@ npm pack ./plugin --pack-destination ./dist
 
 ### 安装 Android App
 
-已公开的 APK 见 [GitHub Releases](https://github.com/shanchuann/dsh-remote/releases/latest)。Release 附件与本地源码可能处于不同版本，请以对应发布说明为准。需要自行构建时，参见 [Android 构建说明](docs/build-android.md)。
+当前 Android 版本为 [0.1.24](https://github.com/shanchuann/dsh-remote/releases/tag/android-v0.1.24)，安装包及 SHA-256 校验文件见 Release 附件。需要自行构建时，参见 [Android 构建说明](docs/build-android.md)。
+
+已配对设备启动时会恢复连接。恢复失败后可选择“重试”或“返回连接”；重试沿用原有配对信息。设置页的插件版本由电脑端 Host 返回，打开设置页和页面停留期间会刷新；电脑更新插件后，以实际运行的版本为准。
 
 ### 局域网连接
 

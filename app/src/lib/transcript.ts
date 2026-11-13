@@ -117,6 +117,8 @@ export type TranscriptItem =
   | {
       kind: "assistant";
       id: string;
+      seq?: number;
+      usage?: Record<string, number>;
       text: string;
       reasoning?: string;
       images?: TranscriptImage[];
@@ -157,6 +159,16 @@ function asString(value: unknown): string | undefined {
 
 function asNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** Preserve only recorded token counts; absent telemetry stays absent. */
+function readMessageUsage(data: Rec): Record<string, number> | undefined {
+  const stream = asArray(data.stream);
+  const lastUsage = stream.map(raw => { const frame = asRecord(raw); return asRecord(frame?.usage) ?? asRecord(asRecord(frame?.chunk)?.usage); }).filter(Boolean).at(-1);
+  const source = asRecord(data.usage) ?? lastUsage;
+  if (!source) return undefined;
+  const usage = Object.fromEntries(Object.entries(source).filter(([, value]) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)) as Record<string, number>;
+  return Object.keys(usage).length ? usage : undefined;
 }
 
 function asArray(value: unknown): unknown[] {
@@ -444,6 +456,29 @@ export function buildTranscript(
   streaming?: TranscriptStreaming | null,
   options?: BuildTranscriptOptions | null,
 ): TranscriptItem[] {
+  const history = prepareTranscript(events, options);
+  return finishTranscript(history.items, history.lastTime, history.confirmedRequests, streaming, options);
+}
+
+/** One projector per mounted chat: live deltas never replay historical events. */
+export function createTranscriptProjector() {
+  let previousEvents: readonly SessionEventLike[] | null | undefined;
+  let previousImages: BuildTranscriptOptions['imagePreviews'];
+  let history: ReturnType<typeof prepareTranscript> | undefined;
+  return (events: readonly SessionEventLike[] | null | undefined, streaming?: TranscriptStreaming | null, options?: BuildTranscriptOptions | null) => {
+    if (!history || events !== previousEvents || options?.imagePreviews !== previousImages) {
+      history = prepareTranscript(events, options);
+      previousEvents = events;
+      previousImages = options?.imagePreviews;
+    }
+    return finishTranscript(history.items, history.lastTime, history.confirmedRequests, streaming, options);
+  };
+}
+
+function prepareTranscript(
+  events: readonly SessionEventLike[] | null | undefined,
+  options?: BuildTranscriptOptions | null,
+) {
   const items: TranscriptItem[] = [];
   /** callId to index in items, for tool/call + tool/result merging. */
   const toolIndex = new Map<string, number>();
@@ -454,7 +489,6 @@ export function buildTranscript(
   /** rpcIds of confirmed user messages, to drop their optimistic twin. */
   const confirmedRequests = new Set<string>();
   let lastTime = 0;
-  const produced = new Map<string, { path: string; label?: string }>();
 
   const putTool = (tool: ToolItem): void => {
     const existing = toolIndex.get(tool.callId);
@@ -501,18 +535,6 @@ export function buildTranscript(
       meta: patch?.meta ?? current.meta,
       time: current.time || time,
     };
-  };
-
-  const recordProduced = (callId: string) => {
-    const index = toolIndex.get(callId); const tool = index === undefined ? undefined : items[index];
-    if (tool?.kind !== 'tool' || tool.status !== 'ok' || !/^(write|edit|write_file|edit_file)$/i.test(tool.name)) return;
-    const input = asRecord(tool.input); const meta = asRecord(tool.meta);
-    const path = asString(meta?.path) ?? asString(input?.path) ?? asString(input?.file_path);
-    if (path) produced.set(path, { path });
-  };
-  const flushProduced = (time: number, seq: unknown) => {
-    if (produced.size) items.push({ kind: 'deliverables', id: 'produced-' + String(seq ?? items.length), title: '已修改文件', files: [...produced.values()], time });
-    produced.clear();
   };
 
   const lastRunningTool = (): ToolItem | undefined => {
@@ -565,6 +587,8 @@ export function buildTranscript(
                 asString(message.id) ??
                 "assistant-" + (asNumber(event.seq) ?? items.length),
               text: parts.text,
+              seq: asNumber(event.seq),
+              usage: readMessageUsage(data),
               ...(parts.reasoning ? { reasoning: parts.reasoning } : {}),
               ...(parts.images.length ? { images: parts.images } : {}),
               time,
@@ -588,9 +612,7 @@ export function buildTranscript(
           if (!callId) break;
           const parts = readParts(data.content);
           upsertTool(callId, asString(data.name) ?? 'tool', parseToolInput(data.arguments), time,
-            event.type === 'tool/ptc-dispatch' ? { status: data.isError === true ? 'error' : 'ok', result: resultText(data.content), images: parts.images, meta: data.meta } : undefined);
-          recordProduced(callId);
-          break;
+            event.type === 'tool/ptc-dispatch' ? { status: data.isError === true ? 'error' : 'ok', result: resultText(data.content), images: parts.images, meta: data.meta } : undefined);          break;
         }
         case "tool/call": {
           const callId =
@@ -649,9 +671,7 @@ export function buildTranscript(
             result: text,
             images: contentParts.images,
             meta: data.meta,
-          });
-          recordProduced(callId);
-          break;
+          });          break;
         }
 
         case "approval/asked": {
@@ -733,9 +753,7 @@ export function buildTranscript(
           const files = asArray(data.files).flatMap((raw) => {
             const file = asRecord(raw); const path = asString(file?.path);
             return path ? [{ path, label: asString(file?.label) ?? asString(file?.description) }] : [];
-          });
-          files.forEach(file => produced.delete(file.path));
-          if (files.length) items.push({ kind: 'deliverables', id: 'deliverables-' + (event.seq ?? items.length), files, time });
+          });          if (files.length) items.push({ kind: 'deliverables', id: 'deliverables-' + (event.seq ?? items.length), files, time });
           break;
         }
         case "todo/write": {
@@ -756,10 +774,7 @@ export function buildTranscript(
         }
 
         case "turn/start":
-        case "turn/end": {
-          if (event.type === "turn/end") flushProduced(time, event.seq);
-          else produced.clear();
-          items.push({
+        case "turn/end": {          items.push({
             kind: "turn",
             id:
               "turn-" +
@@ -780,6 +795,14 @@ export function buildTranscript(
     }
   }
 
+  return { items, lastTime, confirmedRequests };
+}
+
+function finishTranscript(
+  history: readonly TranscriptItem[], lastTime: number, confirmedRequests: Set<string>,
+  streaming?: TranscriptStreaming | null, options?: BuildTranscriptOptions | null,
+): TranscriptItem[] {
+  const items = [...history];
   // Live assistant text rides on the trailing assistant item.
   const streamText = asString(streaming?.text) ?? "";
   const streamReasoning = asString(streaming?.reasoning) ?? "";

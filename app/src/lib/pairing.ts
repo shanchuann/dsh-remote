@@ -17,7 +17,7 @@ export interface PairingInfo {
   hostId?: string;
   /** Optional display name for the host. */
   hostName?: string;
-  /** Public fallback address carried by the same QR (tried when baseUrl fails). */
+  /** Alternate address carried by the same QR (tried when baseUrl fails). */
   altBaseUrl?: string;
 }
 

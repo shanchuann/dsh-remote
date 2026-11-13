@@ -88,10 +88,10 @@ test('validates six digit pairing codes', () => {
 
 test('one QR carries a LAN base URL and a public alt URL', () => {
   const info = parsePairingUri(
-    'dshremote://pair?u=http%3A%2F%2F192.168.1.23%3A8790&alt=https%3A%2F%2Fdsh.trycloudflare.com&c=123456&h=h1',
+    'dshremote://pair?u=http%3A%2F%2F192.168.1.23%3A8790&alt=http%3A%2F%2F100.80.1.2%3A8790&c=123456&h=h1',
   );
   assert.equal(info.baseUrl, 'http://192.168.1.23:8790');
-  assert.equal(info.altBaseUrl, 'https://dsh.trycloudflare.com');
+  assert.equal(info.altBaseUrl, 'http://100.80.1.2:8790');
   assert.equal(info.code, '123456');
   assert.equal(parsePairingUri('dshremote://pair?u=http://192.168.1.23:8790&alt=ftp://nope&c=1').altBaseUrl, undefined);
   assert.equal(parsePairingUri('dshremote://pair?u=http://192.168.1.23:8790&c=123456').altBaseUrl, undefined);

@@ -63,6 +63,15 @@ adb install -r app/android/app/build/outputs/apk/release/app-release.apk
 #   http://10.0.2.2:8790  (10.0.2.2 是 Android 模拟器里的宿主 loopback)
 # 实机：使用电脑的局域网 IP 或 Tailscale IPv4，端口为 8790
 ```
+
+## 发布版本
+
+Android 与 npm 插件使用独立版本号。推送 npm 的 `v*` 标签只发布插件，不会构建或上传 APK。
+
+Android 发布前应完成类型检查、lint、单元测试和 APK 验证，再将对应源码提交打上 `android-v<版本号>` 标签。创建同名 GitHub Release，上传 `dsh-remote-<版本号>-release.apk` 与 `SHA256SUMS.txt`，并更新 README 中的下载版本。发布说明应记录源码提交、测试范围及签名方式。
+
+本机 Gradle 缓存位于 `D:\gradle`，构建前设置 `$env:GRADLE_USER_HOME = 'D:\gradle'` 可复用已有依赖。
+
 ## Windows 问题记录（2026-11-11）
 
 以下记录对应当时的本机环境与构建产物，不代表所有 Windows 环境都会出现相同问题。

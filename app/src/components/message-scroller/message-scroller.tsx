@@ -25,7 +25,6 @@ import Animated, {
 } from "react-native-reanimated";
 import { useResolveClassNames } from "uniwind";
 import { useReducedMotionPreference } from "../../hooks/use-reduced-motion";
-import { ArrowUpGlyph } from "../../primitives/agent-icons";
 import { FadeEdge } from "../../primitives/fade-edge";
 import { RollText } from "../../primitives/roll-text";
 import { SPRING_LAYOUT, SPRING_PRESS } from "../../styles/motion";
@@ -117,7 +116,6 @@ export function MessageScroller({
     fade.value = withTiming(scrolled ? 1 : 0, { duration: 160 });
   }, [fade, scrolled]);
   const fadeStyle = useAnimatedStyle(() => ({ opacity: fade.value }));
-  const { color: foreground } = useResolveClassNames("text-foreground");
   const [overflow, setOverflow] = useState(false);
 
   // The message count when you last left the end.
@@ -299,9 +297,6 @@ export function MessageScroller({
             className="h-9 flex-row items-center gap-1.5 rounded-full border border-border bg-background px-3.5"
             style={styles.pill}
           >
-            <View style={styles.down}>
-              <ArrowUpGlyph size={14} color={foreground} />
-            </View>
             <RollText
               text={pillLabel}
               className="text-xs font-medium text-foreground"
@@ -333,5 +328,4 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
-  down: { transform: [{ rotate: "180deg" }] },
 });

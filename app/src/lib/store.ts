@@ -65,6 +65,7 @@ import type {
   Device,
   HostInfo,
   ModelCatalog,
+  MessageFeedback,
   ModelSelection,
   PendingUser,
   PromptImage,
@@ -82,7 +83,7 @@ import { PROTOCOL_VERSION } from './types';
 /** Input for connect() (protocol 1.2 / 1.3). */
 export interface ConnectInput {
   baseUrl: string;
-  /** Public fallback from the same QR; tried once when baseUrl is unreachable. */
+  /** Alternate address from the same QR; tried once when baseUrl is unreachable. */
   altBaseUrl?: string;
   code: string;
   /** Defaults to the persisted name or a platform default. */
@@ -101,6 +102,9 @@ export interface RemoteActions {
   disconnect(): Promise<void>;
   refreshSessions(): Promise<void>;
   createSession(options?: CreateSessionOptions): Promise<string>;
+  forkSession(sessionId: string, atSeq: number): Promise<{ sessionId: string }>;
+  loadMessageFeedback(sessionId: string): Promise<MessageFeedback[]>;
+  rateMessage(sessionId: string, messageId: string, rating: 'positive' | 'negative' | null, ifVersion: string | null): Promise<Partial<MessageFeedback>>;
   openSession(id: string): Promise<void>;
   /** Page backwards through the open session's history (protocol 3.6). */
   loadOlderHistory(): Promise<void>;
@@ -165,6 +169,7 @@ export function getActiveToken(): string | null {
 
 export const useRemoteStore = create<RemoteState>()((set, get) => {
   let client: RemoteClient | null = null;
+  let restoreInFlight: Promise<boolean> | null = null;
   let sessionGeneration = 0;
   let unsubscribers: (() => void)[] = [];
   // True once the SSE stream has opened at least once on this client, so the
@@ -502,7 +507,7 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
       const altBaseUrl = input.altBaseUrl ? normalizeBaseUrl(input.altBaseUrl) : undefined;
       const code = input.code?.trim() ?? '';
       if (!isValidPairingCode(code)) throw new Error('请输入 6 位数字配对码');
-      // One QR carries both networks: the LAN address first, then the public
+      // One QR carries both networks: Tailscale first when available, then the LAN
       // fallback. Only a failed attempt moves on, so a wrong code never turns
       // into two lockout attempts on two endpoints.
       const candidates = altBaseUrl && altBaseUrl !== baseUrl ? [baseUrl, altBaseUrl] : [baseUrl];
@@ -562,67 +567,73 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
           activeToken = null;
           await clearToken();
           await clearConnectionMeta();
-          if (index === candidates.length - 1) break;
+          if (index === candidates.length - 1 || !isApiError(error) ||
+              (error.code !== 'network' && error.code !== 'timeout')) break;
         }
       }
       setConnectionError(describeError(lastError));
       throw lastError;
     },
 
-    async restore() {
-      const [meta, token] = await Promise.all([loadConnectionMeta(), loadToken()]);
-      if (!meta || !token) return false;
-      set((state) => ({
-        connection: {
-          ...state.connection,
-          status: 'connecting',
-          baseUrl: meta.baseUrl,
-          deviceName: meta.deviceName,
-          error: undefined,
-        },
-      }));
-      activeToken = token;
-      let next: RemoteClient | null = null;
-      try {
-        next = new RemoteClient({ baseUrl: meta.baseUrl, token });
-        const health = await next.health();
-        if (typeof health.protocol === 'number' && health.protocol !== PROTOCOL_VERSION) {
-          throw new ApiError(0, 'protocol-unsupported', 'Host 协议版本不兼容（' + health.protocol + '）');
-        }
-        const host = await next.host();
-        attachClient(next);
-        next.connectEvents();
+    restore() {
+      // Android foreground events can overlap the launch/retry request.
+      if (restoreInFlight) return restoreInFlight;
+      restoreInFlight = (async () => {
+        const [meta, token] = await Promise.all([loadConnectionMeta(), loadToken()]);
+        if (!meta || !token) return false;
         set((state) => ({
           connection: {
             ...state.connection,
-            status: 'connected',
+            status: 'connecting',
             baseUrl: meta.baseUrl,
             deviceName: meta.deviceName,
-            host,
             error: undefined,
-            needsPairing: false,
           },
-          host,
-          devices: host.devices ?? [],
         }));
-        void saveConnectionMeta({
-          ...meta,
-          hostId: host.hostId ?? meta.hostId,
-          hostName: host.name ?? meta.hostName,
-        });
-        void get().actions.refreshSessions();
-        return true;
-      } catch (error) {
-        next?.disconnect();
-        if (isApiError(error) && (error.status === 401 || error.status === 403)) {
-          activeToken = null;
-          await clearToken();
-          set((state) => ({ connection: { ...state.connection, status: 'error', needsPairing: true, error: '认证已失效，请重新配对' } }));
+        activeToken = token;
+        let next: RemoteClient | null = null;
+        try {
+          next = new RemoteClient({ baseUrl: meta.baseUrl, token });
+          const health = await next.health();
+          if (typeof health.protocol === 'number' && health.protocol !== PROTOCOL_VERSION) {
+            throw new ApiError(0, 'protocol-unsupported', 'Host 协议版本不兼容（' + health.protocol + '）');
+          }
+          const host = await next.host();
+          attachClient(next);
+          next.connectEvents();
+          set((state) => ({
+            connection: {
+              ...state.connection,
+              status: 'connected',
+              baseUrl: meta.baseUrl,
+              deviceName: meta.deviceName,
+              host,
+              error: undefined,
+              needsPairing: false,
+            },
+            host,
+            devices: host.devices ?? [],
+          }));
+          void saveConnectionMeta({
+            ...meta,
+            hostId: host.hostId ?? meta.hostId,
+            hostName: host.name ?? meta.hostName,
+          });
+          void get().actions.refreshSessions();
+          return true;
+        } catch (error) {
+          next?.disconnect();
+          if (isApiError(error) && (error.status === 401 || error.status === 403)) {
+            activeToken = null;
+            await clearToken();
+            set((state) => ({ connection: { ...state.connection, status: 'error', needsPairing: true, error: '认证已失效，请重新配对' } }));
+            return false;
+          }
+          setConnectionError(describeError(error));
           return false;
         }
-        setConnectionError(describeError(error));
-        return false;
-      }
+      })().finally(() => { restoreInFlight = null; });
+      return restoreInFlight;
     },
 
     async resume() {
@@ -702,6 +713,18 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
       }
       void get().actions.refreshSessions();
       return result.sessionId;
+    },
+
+    async forkSession(sessionId, atSeq) {
+      const result = await requireClient().forkSession(sessionId, { atSeq, requestId: randomUuid() });
+      void get().actions.refreshSessions();
+      return result;
+    },
+    async loadMessageFeedback(sessionId) {
+      return (await requireClient().messageFeedback(sessionId)).items ?? [];
+    },
+    async rateMessage(sessionId, messageId, rating, ifVersion) {
+      return requireClient().messageFeedback(sessionId, { messageId, rating, ifVersion });
     },
 
     async openSession(id) {
@@ -909,25 +932,31 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
     },
 
     async refreshHost() {
-      if (!client) return;
+      const active = client;
+      if (!active) return;
       try {
-        const host = await client.host();
+        const host = await active.host();
+        if (client !== active) return;
         set((state) => ({
           host,
           devices: host.devices ?? state.devices,
           connection: { ...state.connection, host, error: undefined },
         }));
       } catch (error) {
+        if (client !== active) return;
         setConnectionError(describeError(error));
       }
     },
 
     async refreshDevices() {
-      if (!client) return;
+      const active = client;
+      if (!active) return;
       try {
-        const result = await client.devices();
+        const result = await active.devices();
+        if (client !== active) return;
         set({ devices: Array.isArray(result?.items) ? result.items : [] });
       } catch (error) {
+        if (client !== active) return;
         setConnectionError(describeError(error));
       }
     },
@@ -939,7 +968,7 @@ export const useRemoteStore = create<RemoteState>()((set, get) => {
         await active.deleteDevice(deviceId);
       } catch (error) {
         setConnectionError(describeError(error));
-        return;
+        throw error;
       }
       if (target?.current) {
         // Deleting the current device revokes its token (protocol 3.11).

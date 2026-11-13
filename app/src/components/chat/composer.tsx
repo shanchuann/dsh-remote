@@ -1,5 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import { Alert, AppState, Image, Pressable, Text, View } from "react-native";
+import { type ComponentRef, type RefObject, useEffect, useRef, useState } from "react";
+import { Alert, AppState, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { BlurView } from "expo-blur";
+import { useUniwind } from "uniwind";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useKeyboardState } from "react-native-keyboard-controller";
@@ -11,6 +13,7 @@ import { ImageIcon } from "../common/icons";
 import type { PromptImage } from "../../lib/types";
 
 export type ComposerProps = {
+  blurTarget: RefObject<ComponentRef<typeof View> | null>;
   value: string;
   onValueChange: (value: string) => void;
   onSend: (text: string, images?: PromptImage[]) => void;
@@ -33,6 +36,7 @@ function base64Bytes(data: string): number {
  * removable chips. Images are sent as protocol 3.8 image content blocks.
  */
 export function Composer({
+  blurTarget,
   value,
   onValueChange,
   onSend,
@@ -42,6 +46,7 @@ export function Composer({
   placeholder = "给 DSH 发消息…",
 }: ComposerProps) {
   const insets = useSafeAreaInsets();
+  const { theme } = useUniwind();
   const keyboardVisible = useKeyboardState((state) => state.isVisible);
   const voice = useVoice();
   const valueRef = useRef(value);
@@ -137,7 +142,8 @@ export function Composer({
 
   return (
     <View
-      className="shrink-0 px-4 pt-3"
+      pointerEvents="box-none"
+      className="shrink-0 bg-transparent px-4 pt-3"
       style={{ paddingBottom: (keyboardVisible ? 0 : insets.bottom) + 12 }}
     >
       {recording || recognizing ? <View className="mb-2 flex-row items-center gap-2 rounded-2xl border border-primary/30 bg-primary/5 px-3 py-2">
@@ -156,6 +162,10 @@ export function Composer({
         placeholder={placeholder}
         maxRows={5}
         layout="capsule"
+        backdrop={<View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <BlurView blurTarget={blurTarget} blurMethod="dimezisBlurViewSdk31Plus" intensity={90} tint={theme === 'dark' ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: theme === 'dark' ? 'rgba(23,25,35,0.9)' : 'rgba(250,250,250,0.9)' }]} />
+        </View>}
         restoreOnStop
         className="border border-border-strong"
         actions={[

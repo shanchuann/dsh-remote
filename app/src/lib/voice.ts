@@ -17,7 +17,7 @@ type VoiceModule = InstanceType<NativeModule<VoiceEvents>> & {
 };
 const native = requireOptionalNativeModule<VoiceModule>('DshVoice');
 export const useVoice = create<VoiceState & { language: string; origin: string; supported: boolean }>(() => ({
-  phase: 'idle', ready: false, bytes: 241357257, language: 'auto', origin: 'https://huggingface.co', supported: !!native,
+  phase: 'idle', ready: false, bytes: 241357257, language: 'auto', origin: 'https://hf-mirror.com', supported: !!native,
 }));
 native?.addListener('state', (state: VoiceState) => useVoice.setState({ ...state, error: state.error }));
 let initialized = false;
@@ -27,7 +27,7 @@ export async function refreshVoice() {
     const raw = await AsyncStorage.getItem('dsh-voice-preferences').catch(() => null);
     if (raw) try { const prefs = JSON.parse(raw); useVoice.setState({
       language: ['auto','zh','en','yue','ja','ko'].includes(prefs.language) ? prefs.language : 'auto',
-      origin: prefs.origin === 'https://hf-mirror.com' ? prefs.origin : 'https://huggingface.co',
+      origin: 'https://hf-mirror.com',
     }); } catch { /* Invalid optional preferences use safe defaults. */ }
   }
   if (native) useVoice.setState(await native.status());

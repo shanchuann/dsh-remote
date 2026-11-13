@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { ColorValue } from "react-native";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
+import { materialIcons } from '../components/common/material-icon-paths';
 
 type GlyphProps = { size?: number; color?: ColorValue; strokeWidth?: number };
 
@@ -28,12 +29,10 @@ function Glyph({
 
 // Simple 24-unit stroke glyphs shared by the agent components.
 
-export function ChevronDownGlyph(props: GlyphProps) {
-  return (
-    <Glyph {...props}>
-      <Path d="M6 9l6 6 6-6" />
-    </Glyph>
-  );
+export function ChevronDownGlyph({ size = 16, color = 'currentColor' }: GlyphProps) {
+  return <Svg width={size} height={size} viewBox="0 0 24 24" accessible={false}>
+    <Path d={materialIcons.ChevronDownIcon.path} fill={color} />
+  </Svg>;
 }
 
 export function ArrowUpGlyph(props: GlyphProps) {

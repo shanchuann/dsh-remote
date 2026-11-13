@@ -41,6 +41,10 @@ class DshVoiceModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("DshVoice")
+    View(MessageSelectionView::class) {
+      Events("onQuote")
+      Prop("enabled") { view: MessageSelectionView, enabled: Boolean -> view.setQuoteEnabled(enabled) }
+    }
     Events("state")
     AsyncFunction("requestPermission") { promise: Promise ->
       if (ContextCompat.checkSelfPermission(requireNotNull(appContext.reactContext), Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {

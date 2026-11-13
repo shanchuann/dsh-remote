@@ -28,7 +28,7 @@ test('PTC nested tools preserve web sources, images, dispatch states and generat
   ]);
   assert.equal(items[0].status, 'ok'); assert.equal(items[0].meta.sources[0].url, 'https://example.com');
   assert.equal(items[1].images[0].data, 'aGVsbG8='); assert.equal(items[1].result, '');
-  assert.equal(items[3].kind, 'deliverables'); assert.equal(items[3].files[0].path, 'a.ts');
+  assert.equal(items.some(item => item.kind === 'deliverables' && item.title === '已修改文件'), false);
 });
 test('assistant images, presented files and independent change events are retained', () => {
   const items = buildTranscript([

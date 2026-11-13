@@ -2,7 +2,7 @@
   "expo": {
     "name": "DSH Remote",
     "slug": "dsh-remote",
-    "version": "0.1.15",
+    "version": "0.1.24",
     "scheme": "dshremote",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -17,7 +17,7 @@
     },
     "android": {
       "package": "dev.dsh.remote",
-      "versionCode": 15,
+      "versionCode": 24,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "monochromeImage": "./assets/images/adaptive-icon-monochrome.png",

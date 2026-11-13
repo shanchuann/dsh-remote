@@ -116,6 +116,8 @@ export type CodeBlockProps = Omit<ViewProps, "children"> & {
   highlightLines?: number[];
   /** Tallest the code grows before it scrolls. Defaults to 280. */
   maxHeight?: number;
+  /** Let the surrounding transcript own vertical scrolling. */
+  fullHeight?: boolean;
   /** Starts wrapped. The header has a toggle either way. Defaults to false. */
   wrap?: boolean;
   /** Shows a copy button. Copy with your clipboard library here. */

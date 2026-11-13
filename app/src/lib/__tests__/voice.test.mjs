@@ -6,20 +6,22 @@ function setup() {
   let permission;
   let recorded = 0;
   let downloadError;
+  let downloadOrigin;
   const app = { currentState: 'active' };
   const native = {
     addListener() {},
     requestPermission: () => new Promise(resolve => { permission = resolve; }),
     startRecording: async () => { recorded++; },
-    prepare: async () => { if (downloadError) throw new Error(downloadError); },
+    prepare: async origin => { downloadOrigin = origin; if (downloadError) throw new Error(downloadError); },
+    status: async () => ({ phase: 'idle', ready: false }),
   };
   const voice = sourceLoader({
     expo: { requireOptionalNativeModule: () => native },
     'react-native': { AppState: app },
-    '@react-native-async-storage/async-storage': {},
+    '@react-native-async-storage/async-storage': { getItem: async () => JSON.stringify({ origin: 'https://huggingface.co', language: 'yue' }), setItem: async () => {} },
   })('voice');
   return { voice, app, grant: value => permission({ granted: value }), recorded: () => recorded,
-    failDownload: value => { downloadError = value; } };
+    failDownload: value => { downloadError = value; }, downloadOrigin: () => downloadOrigin };
 }
 
 test('microphone permission activity is marked pending and recording requires foreground consent', async () => {
@@ -33,6 +35,15 @@ test('microphone permission activity is marked pending and recording requires fo
   await assert.rejects(background, /回到对话/); assert.equal(s.recorded(), 1);
   const denied = s.voice.startVoice(); s.grant(false);
   await assert.rejects(denied, /允许麦克风/); assert.equal(s.voice.voicePermissionPending(), false);
+});
+
+test('new installs and saved official-source preferences use the domestic mirror while keeping language', async () => {
+  const s = setup();
+  assert.equal(s.voice.useVoice.getState().origin, 'https://hf-mirror.com');
+  await s.voice.refreshVoice();
+  assert.equal(s.voice.useVoice.getState().language, 'yue');
+  await s.voice.downloadVoice();
+  assert.equal(s.downloadOrigin(), 'https://hf-mirror.com');
 });
 
 test('cancelled speech downloads stay quiet and native failures show their useful explanation', async () => {

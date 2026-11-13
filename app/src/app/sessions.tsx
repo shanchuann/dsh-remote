@@ -13,7 +13,7 @@ import { AppButton } from '../components/common/app-button';
 import { ConnectionBadge } from '../components/common/connection-badge';
 import { EmptyState } from '../components/common/empty-state';
 import { ErrorBanner } from '../components/common/error-banner';
-import { ChatIcon, ChevronDownIcon, ChevronRightIcon, FolderIcon, PlusIcon, SettingsIcon, WarningIcon } from '../components/common/icons';
+import { ChatIcon, ChevronUpIcon, ChevronRightIcon, FolderIcon, FolderOpenIcon, SettingsIcon, WarningIcon } from '../components/common/icons';
 import { ScreenFrame, ScreenTitle } from '../components/common/screen';
 import { SkeletonBlock, SkeletonGroup } from '../components/common/skeleton';
 import { describeError } from '../lib/errors';
@@ -86,7 +86,9 @@ export default function SessionsScreen() {
           <Button
             size="icon"
             variant="ghost"
-            icon={SettingsIcon}
+            icon={({ color }) => <SettingsIcon size={24} color={color} />}
+            style={{ width: 48, height: 48 }}
+            hitSlop={0}
             accessibilityLabel="打开设置"
             onPress={() => router.push('/settings')}
           />
@@ -188,11 +190,11 @@ export default function SessionsScreen() {
               className="gap-2 p-4 active:opacity-80"
             >
               <View className="flex-row items-center gap-3">
-                <FolderIcon size={20} color={typeof primaryColor === 'string' ? primaryColor : undefined} />
+                {expanded.has(item.id) ? <FolderOpenIcon size={20} /> : <FolderIcon size={20} />}
                 <Text className="flex-1 text-base font-semibold text-foreground" numberOfLines={1}>{item.name}</Text>
                 {item.sessions.some((row) => row.running) ? runningPill() : null}
                 {expanded.has(item.id)
-                  ? <ChevronDownIcon size={16} color={typeof mutedColor === 'string' ? mutedColor : undefined} />
+                  ? <ChevronUpIcon size={18} color={typeof mutedColor === 'string' ? mutedColor : undefined} />
                   : <ChevronRightIcon size={16} color={typeof mutedColor === 'string' ? mutedColor : undefined} />}
               </View>
               <Text className="text-xs leading-[18px] text-muted" numberOfLines={2}>{item.cwd ?? '未指定工作目录'}</Text>
@@ -215,7 +217,6 @@ export default function SessionsScreen() {
                 <Pressable accessibilityRole="button" accessibilityLabel={'在项目 ' + item.name + ' 中新建对话'}
                   disabled={creating || !connected} onPress={() => void createSession(item.workspaceId ? { workspaceId: item.workspaceId } : item.cwd ? { cwd: item.cwd } : {})}
                   className="min-h-12 flex-row items-center justify-center gap-2 px-4 py-3 active:bg-surface disabled:opacity-50">
-                  <PlusIcon size={16} color={typeof primaryColor === 'string' ? primaryColor : undefined} />
                   <Text className="text-sm font-medium text-primary">新建对话</Text>
                 </Pressable>
               </View>
@@ -233,7 +234,6 @@ export default function SessionsScreen() {
         <AppButton
           loading={creating}
           disabled={!connected}
-          startIcon={PlusIcon}
           onPress={() => void createSession()}
         >
           {creating ? '正在创建…' : '新建会话'}

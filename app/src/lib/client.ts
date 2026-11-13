@@ -25,6 +25,7 @@ import type {
   HistoryPage,
   HostInfo,
   ModelCatalog,
+  MessageFeedback,
   ModelSelection,
   OpenSessionOptions,
   PairResult,
@@ -258,6 +259,13 @@ export class RemoteClient {
   /** POST /v1/sessions. */
   createSession(options: CreateSessionOptions = {}): Promise<{ sessionId: string; agentPreset?: string }> {
     return this.request('POST', '/v1/sessions', options);
+  }
+
+  forkSession(id: string, options: { atSeq: number; requestId: string }): Promise<{ sessionId: string }> {
+    return this.request('POST', '/v1/sessions/' + encodeURIComponent(id) + '/fork', options);
+  }
+  messageFeedback(id: string, body?: { messageId: string; rating: 'positive' | 'negative' | null; ifVersion: string | null }): Promise<{ items?: MessageFeedback[] } & Partial<MessageFeedback>> {
+    return this.request(body ? 'POST' : 'GET', '/v1/sessions/' + encodeURIComponent(id) + '/feedback', body);
   }
 
   /** GET /v1/sessions/:id. */

@@ -10,6 +10,16 @@ export type MarkdownBlock =
  | { type: 'code'; text: string; language?: string }
  | { type: 'hr' };
 const entities: Record<string,string> = {amp:'&',lt:'<',gt:'>',quot:'"',apos:"'",nbsp:' '};
+/** Cheap equality for common prose; structured tables/lists also compare their cells. */
+export function sameMarkdownBlock(a: MarkdownBlock, b: MarkdownBlock): boolean {
+ if (a === b) return true;
+ if (a.type !== b.type) return false;
+ if (a.type === 'hr') return true;
+ if (a.type === 'paragraph' || a.type === 'quote') return a.text === (b as typeof a).text;
+ if (a.type === 'heading') return a.text === (b as typeof a).text && a.level === (b as typeof a).level;
+ if (a.type === 'code') return a.text === (b as typeof a).text && a.language === (b as typeof a).language;
+ return JSON.stringify(a) === JSON.stringify(b);
+}
 function decode(text:string):string { return text.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (raw,key:string)=> {if(!key.startsWith('#')) return entities[key.toLowerCase()] ?? raw; const n=key[1].toLowerCase()==='x'?parseInt(key.slice(2),16):Number(key.slice(1)); return n>0&&n<=0x10ffff?String.fromCodePoint(n):raw;}); }
 export function parseInlineMarkdown(text:string):MarkdownInline[] {
  const out:MarkdownInline[]=[];

@@ -17,6 +17,7 @@ import { groupToolRuns, type DisplayItem } from "./beautiful/transcript-groups";
 
 export type MessageListProps = {
   topInset?: number;
+  bottomInset?: number;
   items: readonly TranscriptItem[];
   running: boolean;
   /** True while assistant text is arriving, which replaces the typing dots. */
@@ -43,7 +44,7 @@ function sameItem(a: DisplayItem, b: DisplayItem): boolean {
       return (
         left.text === right.text &&
         left.reasoning === right.reasoning &&
-        left.streaming === right.streaming && left.images === right.images
+        left.streaming === right.streaming && left.images === right.images && left.seq === right.seq && left.time === right.time && JSON.stringify(left.usage) === JSON.stringify(right.usage)
       );
     case "user":
       return (
@@ -128,6 +129,7 @@ function renderItem(
  */
 export function MessageList({
   topInset = 0,
+  bottomInset = 0,
   items,
   running,
   streaming,
@@ -180,7 +182,7 @@ export function MessageList({
       windowSize={9}
       removeClippedSubviews={false}
       maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
-      contentContainerStyle={{ paddingTop: 8, paddingBottom: topInset + 8 }}
+      contentContainerStyle={{ paddingTop: bottomInset + 8, paddingBottom: topInset + 8 }}
       scrollIndicatorInsets={{ top: topInset }}
       scrollEventThrottle={32}
       onScroll={(event) => {
@@ -217,9 +219,9 @@ export function MessageList({
         </View>
       ) : undefined}
     />
-    {!atLatest ? <View pointerEvents="box-none" className="absolute bottom-3 left-0 right-0 items-center">
+    {!atLatest ? <View pointerEvents="box-none" className="absolute left-0 right-0 items-center" style={{ bottom: bottomInset + 12 }}>
       <Pressable accessibilityRole="button" accessibilityLabel="回到最新消息" onPress={() => jumpToLatest(false)} className="min-h-11 justify-center rounded-full border border-border bg-background px-4">
-        <Text className="text-xs font-medium text-foreground">↓ 回到最新</Text>
+        <Text className="text-xs font-medium text-foreground">回到最新</Text>
       </Pressable>
     </View> : null}
     </View>

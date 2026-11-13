@@ -40,6 +40,7 @@ export interface Health {
   dshVersion?: string;
   hostId?: string;
   pairingRequired?: boolean;
+  tailscaleUrl?: string | null;
   time?: number;
 }
 
@@ -53,6 +54,8 @@ export interface Capabilities {
   images?: boolean;
   workspaceFiles?: boolean;
   workspaceChanges?: boolean;
+  messageFork?: boolean;
+  messageFeedback?: boolean;
 }
 
 /** A paired device row (GET /v1/devices, GET /v1/host). */
@@ -75,6 +78,7 @@ export interface HostInfo {
   pluginVersion?: string;
   protocol: number;
   capabilities?: Capabilities;
+  tailscaleUrl?: string | null;
   defaultCwd?: string;
   devices?: Device[];
 }
@@ -260,6 +264,14 @@ export interface AssistantMessageData {
   usage?: { inputTokens?: number; outputTokens?: number; [key: string]: unknown };
   stream?: unknown[];
   [key: string]: unknown;
+}
+
+export interface MessageFeedback {
+  messageId: string;
+  rating: 'positive' | 'negative';
+  version: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 /** One entry in a history/snapshot record list. */

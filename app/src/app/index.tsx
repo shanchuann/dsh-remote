@@ -58,7 +58,8 @@ export default function ConnectScreen() {
     );
   }, [params.alt, params.c, params.u]);
 
-  const [phase, setPhase] = useState<'restoring' | 'form'>('restoring');
+  const [phase, setPhase] = useState<'restoring' | 'failed' | 'form'>('restoring');
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [baseUrl, setBaseUrl] = useState(initialPairing?.baseUrl ?? '');
   const [code, setCode] = useState(initialPairing?.code ?? '');
   const [deviceName, setDeviceName] = useState(defaultDeviceName());
@@ -78,26 +79,34 @@ export default function ConnectScreen() {
         setPhase('form');
         return;
       }
-      const request = useRemoteStore.getState().actions.restore();
-      restoringRef.current = request;
-      const restored = await request;
-      if (cancelled) return;
-      if (restored) {
-        router.replace('/sessions');
-        return;
-      }
-      setPhase('form');
       const meta = await loadConnectionMeta();
-      if (!cancelled && meta) {
+      if (cancelled) return;
+      if (meta) {
         setBaseUrl((current) => current || meta.baseUrl);
-        setDeviceName((current) => current || meta.deviceName);
+        setDeviceName(meta.deviceName);
+      }
+      try {
+        const request = useRemoteStore.getState().actions.restore();
+        restoringRef.current = request;
+        const restored = await request;
+        if (cancelled) return;
+        if (restored) {
+          router.replace('/sessions');
+          return;
+        }
+        const latest = useRemoteStore.getState().connection;
+        setPhase(meta && latest.error ? 'failed' : 'form');
+      } catch (cause) {
+        if (cancelled) return;
+        setError(describeError(cause));
+        setPhase(meta ? 'failed' : 'form');
       }
     };
     void run();
     return () => {
       cancelled = true;
     };
-  }, [initialPairing?.baseUrl, initialPairing?.code]);
+  }, [initialPairing?.baseUrl, initialPairing?.code, restoreAttempt]);
 
   const submit = useCallback(
     async (override?: { baseUrl?: string; altBaseUrl?: string; code?: string }) => {
@@ -188,14 +197,37 @@ export default function ConnectScreen() {
     [submit],
   );
 
-  if (phase === 'restoring') {
+  if (phase === 'restoring' || phase === 'failed') {
     return (
       <ScreenFrame>
-        <View className="flex-1 items-center justify-center gap-5 px-8">
+        <ScrollView contentContainerClassName="grow items-center justify-center gap-5 px-8 py-8">
           <BrandMark size={72} />
           <Text className="text-2xl font-semibold text-foreground">DSH Remote</Text>
-          <LoadingView label="正在恢复连接…" fill={false} />
-        </View>
+          {phase === 'restoring' ? <LoadingView label="正在恢复连接…" fill={false} /> : (
+            <View className="w-full max-w-[320px] gap-6">
+              <View className="gap-2" accessibilityLiveRegion="polite">
+                <Text className="text-center text-lg font-medium text-foreground">连接未恢复</Text>
+                <Text className="text-center text-sm leading-5 text-muted">
+                  {error ?? connection.error ?? '无法连接 Host，请检查网络后重试。'}
+                </Text>
+                {baseUrl ? <Text className="text-center text-xs leading-5 text-muted">{baseUrl}</Text> : null}
+              </View>
+              <View className="gap-3">
+                <AppButton onPress={() => {
+                  setError(undefined);
+                  useRemoteStore.getState().actions.clearError();
+                  setPhase('restoring');
+                  setRestoreAttempt((attempt) => attempt + 1);
+                }}>重试</AppButton>
+                <AppButton variant="outline" onPress={() => {
+                  setError(undefined);
+                  useRemoteStore.getState().actions.clearError();
+                  setPhase('form');
+                }}>返回连接</AppButton>
+              </View>
+            </View>
+          )}
+        </ScrollView>
       </ScreenFrame>
     );
   }
@@ -227,7 +259,7 @@ export default function ConnectScreen() {
 
             <Input
               label="Host 地址"
-              placeholder="http://192.168.1.23:8790"
+              placeholder="http://100.x.y.z:8790 或局域网 IP"
               value={baseUrl}
               onChangeText={(value) => {
                 setBaseUrl(value);
@@ -279,7 +311,8 @@ export default function ConnectScreen() {
           </View>
 
           <Text className="mt-5 text-center text-xs leading-[18px] text-muted">
-            支持局域网直连与公网连接
+            支持局域网直连与 Tailscale 远程连接
+            {'\n'}远程连接前，请先在手机打开 Tailscale
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>

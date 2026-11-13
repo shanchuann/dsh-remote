@@ -1,6 +1,6 @@
 /** Native BeautifulUI ToolChips, with expandable real inputs and outputs. */
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { useResolveClassNames } from 'uniwind';
 import type { TranscriptItem } from '../../../lib/transcript';
 import { useReducedMotionPreference } from '../../../hooks/use-reduced-motion';
@@ -45,15 +45,13 @@ function ToolRow({ item }: { item: ToolChipItem }) {
       </Pressable>
       <Disclosure open={open} reduce={reduce}>
         <View className="mb-2 ml-2 gap-2 border-l border-border pl-4">
-          {code ? <CodeBlock code={code.code} language={code.language} status="complete" maxHeight={220} /> : fallbackInput ? <CodeBlock code={fallbackInput} language="json" status="complete" maxHeight={220} /> : null}
+          {code ? <CodeBlock code={code.code} language={code.language} status="complete" fullHeight wrap={false} /> : fallbackInput ? <CodeBlock code={fallbackInput} language="json" status="complete" fullHeight wrap={false} /> : null}
           {sources.length ? <MarkdownText text={sources.map(s => '- [' + (s.title ?? s.url) + '](' + s.url + ')' + (s.snippet ? ' '+ s.snippet : '')).join('\n')} muted /> : null}
           {typeof meta?.url === 'string' && /^https?:/i.test(meta.url) ? <MarkdownText text={'[打开原网页](' + meta.url + ')'} muted /> : null}
           {meta?.truncated === true ? <Text className="text-xs text-muted">网页内容已截取，可打开原网页阅读完整内容。</Text> : null}
           {item.images?.map((image, index) => <RemoteImage key={index} image={image} />)}
           {item.result ? (
-            <ScrollView style={{ maxHeight: 240 }} nestedScrollEnabled>
-              <MarkdownText text={item.result} muted />
-            </ScrollView>
+            <MarkdownText text={item.result} muted fullHeightCode />
           ) : <Text className="py-1 text-xs text-muted">{item.status === 'running' ? '执行中' : '无输出'}</Text>}
         </View>
       </Disclosure>

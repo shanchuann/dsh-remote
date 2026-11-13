@@ -3,9 +3,9 @@
  * disconnect / re-pair actions required by protocol 6.7.
  */
 
-import { router } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
+import { Alert, AppState, Pressable, ScrollView, Text, View } from 'react-native';
 import { useResolveClassNames } from 'uniwind';
 
 import { VoiceSettings } from '../components/chat/voice-settings';
@@ -45,11 +45,22 @@ export default function SettingsScreen() {
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
-    if (connection.status !== 'connected') return;
-    void actions.refreshHost();
-    void actions.refreshDevices();
-  }, [actions, connection.status]);
+  useFocusEffect(useCallback(() => {
+    let refreshing = false;
+    const refreshMetadata = async () => {
+      if (refreshing || AppState.currentState !== 'active' ||
+          useRemoteStore.getState().connection.status !== 'connected') return;
+      refreshing = true;
+      try {
+        await Promise.all([actions.refreshHost(), actions.refreshDevices()]);
+      } finally {
+        refreshing = false;
+      }
+    };
+    void refreshMetadata();
+    const timer = setInterval(() => void refreshMetadata(), 15000);
+    return () => clearInterval(timer);
+  }, [actions]));
 
   const disconnect = useCallback(() => {
     Alert.alert('断开连接', '断开后会清除本机保存的 token，需要重新扫描二维码配对。', [
@@ -266,7 +277,7 @@ export default function SettingsScreen() {
         <SectionCard title="关于">
           <InfoRow label="App" value={'DSH Remote ' + appVersion()} />
           <InfoRow label="协议" value={'DSH Remote 移动协议 v' + PROTOCOL_VERSION} />
-          <InfoRow label="连接方式" value="局域网 HTTP/SSE 直连，不经过云端" />
+          <InfoRow label="连接方式" value="局域网 / Tailscale · HTTP + SSE" />
           <View className="mt-2 flex-row items-center gap-2">
             <PowerIcon size={14} color={typeof mutedColor === 'string' ? mutedColor : undefined} />
             <Text className="text-[11px] text-muted">

@@ -1,4 +1,4 @@
-import { createContext, useContext, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert, Image, Linking, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
@@ -20,7 +20,7 @@ export function SessionFilesProvider({ sessionId, children }: { sessionId?: stri
   const request = useRef(0);
   const insets = useSafeAreaInsets();
   const close = () => { request.current++; setPreview(undefined); };
-  const open = async (value: string) => {
+  const open = useCallback(async (value: string) => {
     if (/^(https?:|mailto:|tel:)/i.test(value)) {
       try { await Linking.openURL(value); } catch { Alert.alert('无法打开链接'); }
       return;
@@ -34,7 +34,8 @@ export function SessionFilesProvider({ sessionId, children }: { sessionId?: stri
       const file = await actions.readFile(sessionId, path);
       if (ticket === request.current) setPreview({ path, text: file.text + (file.eof === false ? '\n\n…预览仅展示前 3000 行，请下载完整文件。' : '') });
     } catch (error) { if (ticket === request.current) setPreview({ path, error: error instanceof Error ? error.message : String(error) }); }
-  };
+  }, [actions, sessionId]);
+  const filesContext = useMemo(() => ({ sessionId, open: (value: string) => { void open(value); } }), [sessionId, open]);
   const share = async () => {
     if (!preview || !base || !sessionId || sharing) return;
     setSharing(true);
@@ -47,7 +48,7 @@ export function SessionFilesProvider({ sessionId, children }: { sessionId?: stri
     } catch (error) { Alert.alert('下载失败', error instanceof Error ? error.message : String(error)); }
     finally { setSharing(false); }
   };
-  return <FilesContext value={{ sessionId, open: value => void open(value) }}>
+  return <FilesContext value={filesContext}>
     {children}
     <Modal visible={!!preview} animationType="slide" onRequestClose={close}>
       <View className="flex-1 bg-background" style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}>
