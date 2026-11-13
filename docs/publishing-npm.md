@@ -87,6 +87,8 @@ npm publish ./dist/dsh-remote-harness-0.1.16.tgz --access public --registry http
 
 配置要求见 [npm 可信发布说明](https://docs.npmjs.com/trusted-publishers/)。
 
+本仓库已在 2026-11-13 通过 `v0.1.17` 标签完成首次 OIDC 可信发布，[运行记录](https://github.com/shanchuann/dsh-remote/actions/runs/43374789457)及 npm 官方源版本已核验。npm 可能先返回发布成功，再处理包数分钟；工作流成功后仍需核对 registry 的版本和 `latest`。
+
 ## 从当前离线包迁移
 
 1. 确认 npm 官方源已经提供 0.1.16 或更高的所需版本。

@@ -22,3 +22,7 @@
 - JS 语法及 Git diff 空白检查通过，Impeccable 检测未返回问题。
 
 本轮使用插件 0.1.17 分发，通过 `v0.1.17` 标签触发 GitHub Actions 发布。已发布的 npm 0.1.16 保留原内容；本机 DSH 插件需通过插件页更新后，才能使用本轮界面。
+
+## 发布结果
+
+`v0.1.17` 指向发布提交 `c219d6f`。[GitHub Actions 运行 43374789457](https://github.com/shanchuann/dsh-remote/actions/runs/43374789457) 成功完成元数据检查、102 项测试和 OIDC 发布，并生成 provenance。npm 提示包需处理数分钟后可见；随后核对官方 registry，`latest` 已指向 0.1.17，包的 SHA-1 为 `159f0361e3b68397f5fdaf66c727b0f741a4f90d`，与发布前检查的包一致。
