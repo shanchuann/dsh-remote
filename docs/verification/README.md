@@ -1,4 +1,20 @@
-# DSH Remote 验证总览（verifier 交付索引）
+# DSH Remote 验证记录索引
+
+## 近期记录
+
+| 记录 | 范围 |
+|---|---|
+| [文档与示例更新](documentation-2026-11-13.md) | 四张示例图片、文档检查及 npm 候选包 |
+| [界面示例](../screenshots.md) | 2026-11-13 用户提供的四张 Android 实机图片，用于产品操作说明 |
+| [Tailscale 迁移](tailscale-2026-11-13.md) | 网络地址发现、协议字段、测试与本机插件更新 |
+| [输入菜单定位](menu-anchor-2026-11-13.md) | 键盘展开时的输入区菜单位置 |
+| [聊天布局](chat-chrome-2026-11-13.md) | 输入区、安全区和任务面板 |
+| [移动工作流](mobile-workflow-2026-11-12.md) | 本地语音、工具结果、文件与图片预览 |
+| [项目清单](project-catalog-2026-11-12.md) | 项目目录与会话归属 |
+
+产品示例图位于 `docs/screenshots/`。历史测试截图位于本目录的 `screenshots/`，保留对应测试时的状态。各验证报告只说明其标明版本和环境下的检查结果。
+
+## 2026-11-11 基线验证
 
 - 更新时间：2026-11-11 19:15（Asia/Shanghai）
 - 验证对象：协议 v1 独立客户端 vs 真实 DSH 宿主（隔离 `DSH_HOME=D:\Code\dsh-remote\.testhome`，profile remote-dev，插件端口 8790）+ Android release APK

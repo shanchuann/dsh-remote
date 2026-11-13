@@ -1,7 +1,7 @@
 # DSH Remote 移动协议 v1（草案，实现契约）
 
 > 状态：**v1 冻结**（2026-11-11）。插件端与 App 端都按本文件实现；任何变更先改本文件并通知两端。
-> 传输：局域网 HTTP/1.1 + JSON + SSE（Server-Sent Events），无外部运行时依赖。
+> 传输：局域网 / Tailscale HTTP/1.1 + JSON + SSE（Server-Sent Events），无外部运行时依赖。
 
 ## 0. 术语
 
@@ -17,9 +17,9 @@
 
 插件在 Host 上监听 `0.0.0.0:<port>`（默认 **8790**，可用配置 `port` 覆盖）。监听成功后：
 
-1. 写 `<DSH_HOME>/plugins/dsh-remote/pairing.json`：`{ hostId, hostName, protocol: 1, port, addresses: [...], pairingCode, pairingExpiresAt, updatedAt }`（不含 device token）。
+1. 写 `<DSH_HOME>/plugins/dsh-remote/pairing.json`：`{ hostId, hostName, protocol: 1, port, addresses: [...], tailscaleUrl, pairingCode, pairingExpiresAt, updatedAt }`（不含 device token）。
 2. 生成 `<DSH_HOME>/plugins/dsh-remote/pairing.png`（二维码）与 `pairing.txt`（便于 CLI 查看/复制）。
-3. 通过 `ctx.logger.info` 打印：`dsh remote: http://<lan-ip>:8790 (pair code 123456)`。
+3. 通过 `ctx.logger.info` 打印：`dsh remote: http://<tailscale-or-lan-ip>:8790 (pair code 123456)`。
 4. 在 loopback 提供配对页：`http://127.0.0.1:8790/pair`（只允许 loopback 访问；显示二维码/验证码/设备列表）。
 
 ### 1.2 二维码负载
@@ -30,7 +30,8 @@ URI scheme，便于 App 扫码直接解析：
 dshremote://pair?u=http%3A%2F%2F192.168.1.23%3A8790&c=123456&h=<hostId>&n=<hostName>
 ```
 
-- `u`：Host 基地址（URL 编码），App 之后再拼 `/v1/...`。
+- `u`：Host 基地址（URL 编码），App 之后再拼 `/v1/...`。检测到 Tailscale IPv4 时优先使用，否则使用局域网地址。
+- `alt`：可选备用基地址；Tailscale 为主地址时携带可识别的物理局域网地址，主地址连接失败后尝试。不再写入旧公网隧道地址。
 - `c`：一次性配对码（6 位数字，TTL 10 分钟，配对成功即轮换）。
 - `h`：hostId（稳定 UUID，用于识别同一台电脑）。
 - `n`：可选，Host 显示名。
@@ -86,6 +87,8 @@ SSE 与图片/附件下载额外允许 `?token=<token>`（EventSource 无法自�
 ### 3.1 `GET /v1/health`
 
 无需认证。
+
+`tailscaleUrl` 为自动发现的电脑 Tailscale 根地址，未检测到时为 `null`；`/v1/host` 和配对响应的 `host` 同样提供此字段。旧 `publicUrl`、`tunnel` 已移除，协议版本仍为 1，客户端应继续容忍可选字段。
 
 ```json
 { "ok": true, "name": "dsh-remote", "protocol": 1, "pluginVersion": "0.1.0", "dshVersion": "0.2.2-rc.1", "hostId": "...", "pairingRequired": true, "time": 1763000000000 }
@@ -208,6 +211,13 @@ SSE 与图片/附件下载额外允许 `?token=<token>`（EventSource 无法自�
 图片（可选，需 `capabilities.images`）：`{ "type": "image", "mediaType": "image/jpeg", "data": "<base64>", "name": "photo.jpg" }`（≤ 5 MB/张，最多 4 张）。
 
 ### 3.9 取消 / 重命名 / 选模型
+
+消息操作扩展（插件 0.1.15+）：
+
+- `POST /v1/sessions/:id/fork` `{ "atSeq": 42, "requestId": "uuid" }` → `{ "sessionId": "..." }`。包含指定消息的历史前缀，新对话沿用源项目；同一请求在十分钟内重试不会重复创建分支。
+- `GET /v1/sessions/:id/feedback` → `{ "items": [...] }`，返回 DSH 已保存的消息反馈。
+- `POST /v1/sessions/:id/feedback` `{ "messageId": "...", "rating": "positive", "ifVersion": null }`。`rating` 支持 `positive`、`negative` 和撤回用的 `null`；已有反馈必须带当前 `version`，版本冲突返回 409 并重新读取。
+- Host 的 `capabilities.messageFork`、`capabilities.messageFeedback` 标明可用性。反馈直接使用 DSH `messageFeedback` 服务，不在手机端伪造保存成功。
 
 - `POST /v1/sessions/:id/cancel` → `{ "accepted": true }`
 - `POST /v1/sessions/:id/rename` `{ "title": "..." }` → `{ "title": "...", "seq": 42 }`

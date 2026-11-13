@@ -1,324 +1,159 @@
-# 手机直连你的 DeepSeek Harness
+# DSH Remote
 
 <div align="center">
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="app/assets/images/deepseek-whale-white.png" />
-  <img src="app/assets/images/deepseek-whale.png" width="96" alt="DSH Remote" />
+  <img src="app/assets/images/deepseek-whale.png" width="96" alt="DSH Remote 鲸鱼图标" />
 </picture>
-<br/>
-<h2>DSH Remote</h2>
 
-**用手机继续电脑上的 DeepSeek Harness 会话，支持局域网直连与公网连接。**
+通过 Android 手机访问电脑上正在运行的 DeepSeek Harness，查看项目、继续会话并处理工具审批。支持局域网直连与 Tailscale 远程连接。
 
-[![DSH](https://img.shields.io/badge/DeepSeek%20Harness-0.2.2--rc.1-4D6BFE)](https://github.com/shanchuann/dsh-remote-)
-[![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)]()
-[![Expo SDK](https://img.shields.io/badge/Expo-SDK%2058-000020?logo=expo&logoColor=white)]()
-[![Protocol](https://img.shields.io/badge/wire%20protocol-v1-8A2BE2)](docs/protocol.md)
 [![npm](https://img.shields.io/npm/v/dsh-remote-harness?logo=npm&color=CB3837)](https://www.npmjs.com/package/dsh-remote-harness)
+[![Android](https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android&logoColor=white)](https://github.com/shanchuann/dsh-remote/releases/latest)
+[![Protocol](https://img.shields.io/badge/protocol-v1-4D6BFE)](docs/protocol.md)
 [![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
-
-[功能](#功能) · [截图](#截图) · [架构](#架构) · [快速开始](#快速开始) · [npm 包](#npm-包) · [协议](#协议-v1) · [验证](#验证结果) · [开发](#开发)
 
 </div>
 
----
+## 界面示例
 
-**DSH Remote** 由两部分组成：
-
-| 组件 | 说明 |
-|---|---|
-| **Host 插件**（[`plugin/`](plugin/)） | 跑在 DeepSeek Harness 进程内，暴露局域网 HTTP + SSE；调用 DSH 的 `sessionController`，转发会话、流式输出、工具调用、审批与模型选择。**零运行时依赖**（只用 `node:` 内置 + 一个 vendored QR 编码器）。 |
-| **Android App**（[`app/`](app/)） | React Native（Expo SDK 58）+ [beUI Native](https://beui.dev) 组件；扫码/手动配对、会话列表、流式聊天、工具卡、审批、模型切换、断线重连。鲸鱼图标来自 [`deepseek-whale.png`](app/assets/images/deepseek-whale.png)，应用名称使用 **DSH Remote**（[`deepseek.svg`](deepseek.svg) 为原始矢量）。 |
-
-> 默认通过局域网直连电脑 `LAN:8790`，也可使用插件配置的公网地址。没有独立账号体系，会话保存在电脑，设备凭据保存在手机。
-
-## 功能
+以下为 Android 实机界面，依次展示连接、项目列表、对话输入和本地语音设置。图片由用户于 2026-11-13 提供；其中的项目名称、路径和会话内容仅为使用示例。
 
 <table>
-<tr>
-<td width="50%" valign="top">
-
-**连接**
-- 二维码扫码配对 / 手动 IP + 6 位配对码
-- 设备 token 持久化，App 重启自动恢复连接
-- 每台手机独立 token，可在设置页单独撤销
-- 断线指数退避重连，重连后自动重新订阅当前会话
-
-**会话**
-- 按项目展示主对话，展开项目查看标题、时间与运行状态
-- 子智能体在对话页的专用入口查看，不混入项目主对话列表
-- 打开会话即加载历史快照，自动跟随新消息
-- 新建会话、重命名、切换模型（含 reasoning effort）
-
-</td>
-<td width="50%" valign="top">
-
-**聊天**
-- token 级流式回复、思考过程折叠
-- 工具调用卡片（参数/结果/状态，代码块高亮，长输出折叠）
-- Todo 清单、Markdown、运行中停止按钮
-- 键盘弹出时输入框自动上抬，不遮挡消息
-
-**安全 / 体验**
-- 本地审批：手机端审批卡（无人应答自动回退桌面端）
-- 局域网明文 HTTP，仅限可信 Wi-Fi
-- 深色 / 浅色主题，品牌蓝 `#4D6BFE`
-
-</td>
-</tr>
+  <tr>
+    <td width="25%"><img src="docs/screenshots/connect.png" width="240" alt="连接页：输入 Host 地址、六位配对码和设备名称，也可扫描二维码" /></td>
+    <td width="25%"><img src="docs/screenshots/projects.png" width="240" alt="项目列表：按电脑上的工作目录组织会话" /></td>
+    <td width="25%"><img src="docs/screenshots/chat.png" width="240" alt="对话页：查看回复与工具结果，键盘展开时继续输入" /></td>
+    <td width="25%"><img src="docs/screenshots/voice-settings.png" width="240" alt="设置页：SenseVoice 本地语音模型已就绪，可选择识别语言" /></td>
+  </tr>
+  <tr>
+    <td align="center">连接与配对</td>
+    <td align="center">项目与会话</td>
+    <td align="center">对话输入</td>
+    <td align="center">本地语音设置</td>
+  </tr>
 </table>
 
-## 截图
+图中连接页的“公网连接”为旧版界面文案；当前远程访问使用 Tailscale。各页面的操作说明见[界面示例](docs/screenshots.md)。
 
-<table>
-<tr>
-<td><img src="docs/verification/screenshots/app-015-connect.png" alt="连接页" /></td>
-<td><img src="docs/verification/screenshots/32-keyboard.png" alt="键盘上方输入" /></td>
-<td><img src="docs/verification/screenshots/36-progress.png" alt="流式与工具卡" /></td>
-</tr>
-<tr>
-<td align="center"><sub>连接页 · 黑色鲸鱼标识</sub></td>
-<td align="center"><sub>键盘弹出，输入区自动上抬</sub></td>
-<td align="center"><sub>工具调用 + 流式回复（PONG）</sub></td>
-</tr>
-</table>
+## 功能与组成
 
-## 架构
+DSH Remote 由 [Host 插件](plugin/)和 [Android App](app/)组成。插件运行在 DSH 进程内，调用 `sessionController` 等宿主服务，通过 HTTP/JSON 和 SSE 向手机提供接口。App 使用 React Native、Expo SDK 58 和 beUI Native 构建。
+
+- 按项目浏览主会话，在对话页查看子智能体；支持新建会话、重命名及模型切换。
+- 查看历史消息、流式回复、思考过程和工具结果；支持任务面板、文件改动与交付图片预览。
+- 发送文字和图片，或使用 Android 本地语音识别生成可编辑的文字草稿。
+- 在手机上批准或拒绝工具请求，停止正在生成的回复；断线后自动重连并重新订阅当前会话。
+- 使用六位配对码添加设备，每台设备独立认证，可在设置中撤销访问。
+
+会话和工作目录由电脑上的 DSH 管理，手机保存连接信息与设备凭据。电脑需要保持运行。
+
+## 安装与连接
+
+### 安装 Host 插件
+
+打开 DSH 桌面端的“插件 → 添加插件 → 安装第三方插件”，输入 `dsh-remote-harness`，使用 npm 官方源安装。启用后，进入“设置 → 远程控制”查看连接地址、二维码、配对码和已配对设备。也可在电脑浏览器访问 <http://127.0.0.1:8790/pair>。
+
+通过 npm 包名安装后，DSH 插件页可以检测后续版本并提供更新入口。本地 `.tgz`、`file:` 或脚本复制方式安装的插件不参与 npm 更新检测。
+
+Tailscale 支持从 Host 插件 0.1.16 起提供。安装前可核对官方源版本：
+
+```bash
+npm view dsh-remote-harness version --registry https://registry.npmjs.org/
+```
+
+如果 registry 尚未提供所需版本，可在仓库根目录打包：
+
+```bash
+npm pack ./plugin --pack-destination ./dist
+```
+
+在同一桌面安装入口填写生成的 `.tgz` 绝对路径。Electron 管理的 `desktop` profile 应通过桌面插件页安装；`dsh plugin --profile desktop add ...` 无法修改该 profile。支持热加载时安装后会生效，否则按 DSH 提示重启。发布及安装来源迁移见 [npm 发布说明](docs/publishing-npm.md)。
+
+### 安装 Android App
+
+已公开的 APK 见 [GitHub Releases](https://github.com/shanchuann/dsh-remote/releases/latest)。Release 附件与本地源码可能处于不同版本，请以对应发布说明为准。需要自行构建时，参见 [Android 构建说明](docs/build-android.md)。
+
+### 局域网连接
+
+1. 手机和电脑接入同一局域网，确认电脑防火墙允许访问 TCP 8790。
+2. 在 App 中扫描电脑配对页的二维码，或输入 `http://<电脑局域网 IP>:8790` 和当前六位配对码。
+3. 连接成功后，选择项目和会话。
+
+### Tailscale 远程连接
+
+1. 电脑和手机安装 [Tailscale](https://tailscale.com/download)，加入同一 tailnet，并保持已连接。
+2. 打开电脑上的“设置 → 远程控制”。插件会识别 Tailscale IPv4 网卡，并优先将该地址写入二维码，同时提供局域网备用地址。
+3. 手机扫描二维码，或输入 `http://<电脑的 Tailscale IPv4>:8790` 和配对码。
+
+直接使用 IP 地址不依赖 Tailscale DNS。浏览器能访问 Host、App 却超时时，应检查 App 中保存的地址和 Tailscale 应用分流设置。完整排查步骤及旧 Cloudflare 配置迁移见[远程访问说明](docs/remote-access.md)。
+
+## 本地语音输入
+
+在“设置 → 本地语音输入”下载并校验约 241 MB 的 SenseVoice 模型，可选择官方源或国内镜像。模型就绪后，点击对话输入框的麦克风录音，识别结果填入草稿，确认后再发送。
+
+语音识别使用 SenseVoiceSmall INT8、Silero VAD 和 sherpa-onnx，在手机 CPU 上运行，录音不上传。支持自动检测、普通话、粤语、英语、日语和韩语，单次录音最多 90 秒。离开应用或切换会话会取消当前语音输入。
+
+## 架构与协议
 
 ```mermaid
 flowchart LR
-    subgraph PC["电脑 · DeepSeek Harness"]
-        DSH[DSH Host 进程]
-        P["@dsh-remote 插件<br/>HTTP + SSE · 0.0.0.0:8790"]
-        DSH --> P
-    end
-    subgraph PHONE["手机 · DSH Remote App"]
-        APP["Expo / React Native<br/>RemoteClient + zustand store"]
-        UI["聊天 / 会话列表 / 审批 / 设置"]
-        APP --> UI
-    end
-    P <-->|"LAN · JSON + SSE<br/>Bearer token"| APP
-    P -.->|"ctx.sessionController<br/>follow / prompt / cancel"| DSH
+    DSH[DeepSeek Harness] -->|进程内宿主服务| HOST[Host 插件]
+    HOST <-->|局域网或 Tailscale · HTTP/JSON + SSE| APP[Android App]
 ```
 
-- **Host 插件**在 DSH 进程内直接调用 `ctx.sessionController`（与官方 Web 客户端同一套业务逻辑），再用自定义的窄协议暴露给手机；不依赖 DSH 的生成式 Typert RPC。
-- **App** 只依赖 HTTP/JSON + SSE（[协议 v1](docs/protocol.md)），用 zustand 管理连接/会话/流式/审批状态。
-- 详细设计见 [docs/architecture.md](docs/architecture.md)；协议含真实抓包（[§9](docs/protocol.md)）。
+Host 插件使用 Node.js 内置模块和随包提供的 QR 编码器，无第三方运行时 npm 依赖。远程连接由系统 Tailscale 客户端提供，插件不启动 VPN 或公网隧道进程。
 
-## 快速开始
+协议 v1 覆盖配对、设备、项目与会话、消息、模型和审批。详细字段、事件及错误码见[协议文档](docs/protocol.md)，模块划分见[系统架构](docs/architecture.md)和 [App 架构](docs/app-architecture.md)。
 
-### 1. 安装 Host 插件
-
-**方式 A · 在 DSH 桌面里点一下（推荐，无需脚本）**
-
-打开 DSH → **插件 → 添加插件**，输入 `dsh-remote-harness` 安装即可。插件声明了 `dsh.bundle`，会作为一个 profile 组合包安装并在每次启动 DSH 时自动加载。
-
-安装完成、重启 DSH 后：打开 **设置 → 远程控制**，即可看到配对二维码、配对码（自动轮换/倒计时）、局域网地址、公网地址与已配对设备（每 4 秒自动刷新）。也可直接访问 <http://127.0.0.1:8790/pair>。
-
-**方式 B · 命令行安装**（等价）：
+## 开发与验证
 
 ```bash
-dsh plugin --profile desktop add dsh-remote-harness
-```
-
-Android 0.1.15 的配套插件为 0.1.14。也可从 [发布附件](https://github.com/shanchuann/dsh-remote/releases/tag/android-v0.1.15) 下载 `dsh-remote-harness-0.1.14.tgz`，在下载目录安装：
-
-```bash
-dsh plugin --profile desktop add ./dsh-remote-harness-0.1.14.tgz --offline
-```
-
-**方式 C · 一键脚本**（适合本地开发，把插件复制到 `~/.dsh/plugins/dsh-remote`）：
-
-```powershell
-node plugin/scripts/install.mjs --dry-run
-node plugin/scripts/install.mjs --yes
-# 卸载：node plugin/scripts/uninstall.mjs --yes
-```
-
-> 不要同时使用 B/C：两种方式都会插入 `dsh-remote` 行，重复 id 会冲突。切换到 GUI/npm 方式前先运行 `uninstall.mjs --yes` 移除脚本安装。
-
-重启 DSH（或等待配置热加载）后：
-
-- 日志出现 `dsh remote: http://<局域网IP>:8790 (pair code 123456)`
-- 配对信息写入 `~/.dsh/plugins/dsh-remote/pairing.json`、`pairing.png`、`pairing.txt`
-- 电脑浏览器打开 **<http://127.0.0.1:8790/pair>** 查看二维码与配对码
-
-> 端口默认 **8790**，可在 profile patch 的 `config.port` 修改；Windows 首次运行需放行防火墙 TCP 8790。
-
-### 2. 安装 Android App
-
-```bash
-cd app
-npx expo prebuild --platform android --clean
-cd android && ./gradlew assembleRelease
-# 产物：app/build/outputs/apk/release/app-release.apk
-```
-
-或直接下载已构建的 [Android 0.1.15 APK](https://github.com/shanchuann/dsh-remote/releases/download/android-v0.1.15/dsh-remote-0.1.15-release.apk)，配套插件 0.1.14 也在 [GitHub Releases](https://github.com/shanchuann/dsh-remote/releases/latest) 提供。
-
-环境：Node 20+、JDK 17+、Android SDK（platform 36 / build-tools 36）。Windows 下有两个已知构建坑，见 [docs/build-android.md](docs/build-android.md)。
-
-### 3. 连接
-
-1. 手机与电脑连同一个 Wi-Fi；
-2. 打开 App → 扫描电脑 `/pair` 页面二维码（或手动填 `http://<电脑IP>:8790` + 6 位配对码）；
-3. 选择会话，开始聊天；手机端可审批工具调用、切换模型、停止生成。
-
-## npm 包
-
-插件已发布到 npm：**[`dsh-remote-harness`](https://www.npmjs.com/package/dsh-remote-harness)**（v0.1.0）。
-
-```bash
-npm view dsh-remote-harness        # 查看版本
-npm pack plugin                    # 打包 tarball（无需登录）
-npm publish plugin --dry-run       # 发布前检查（无需登录）
-```
-
-发布（需要 npm 账号）：
-
-```bash
-npm login
-npm publish plugin --access public
-```
-
-包内容：`src/`（Cordis 插件入口、bridge、net/auth/pairing）、`scripts/`（安装/卸载/配对 CLI）、`vendor/qrcode`、README。安装后可直接被 DSH profile 以包名加载；也可继续用 `file://` 本地路径方式。
-
-## 协议 v1
-
-HTTP/1.1 + JSON + Server-Sent Events，无 WebSocket、无第三方运行时依赖。
-
-| 能力 | 端点 |
-|---|---|
-| 配对 | `POST /v1/pair`（6 位码，10 分钟 TTL，成功轮换） |
-| 设备 | `GET /v1/devices` · `DELETE /v1/devices/:id` |
-| 会话 | `GET /v1/sessions` · `POST /v1/sessions` · `GET /v1/sessions/:id` · `GET /v1/sessions/:id/history` |
-| 实时 | `POST /v1/sessions/:id/open` → `GET /v1/events`（SSE：snapshot / event / assistant / state / approval） |
-| 对话 | `POST /v1/sessions/:id/prompt` · `POST /v1/sessions/:id/cancel` · `POST /v1/sessions/:id/rename` |
-| 模型 | `GET /v1/models` · `POST /v1/sessions/:id/model` |
-| 审批 | `GET /v1/approvals` · `POST /v1/approvals/:id` |
-
-完整字段、错误码与真实抓包见 [docs/protocol.md](docs/protocol.md)。
-
-## 仓库结构
-
-```text
-dsh-remote-/
-├── plugin/                 DSH Host 插件（可独立发布为 npm 包）
-│   ├── src/
-│   │   ├── dsh/bridge.mjs  ← 唯一接触 DSH 内部服务的文件
-│   │   ├── net/            HTTP 路由 / SSE hub / 协议服务层
-│   │   ├── auth/           配对码与设备 token（仅存 SHA-256）
-│   │   ├── pairing/        二维码、/pair 页面、pairing 文件
-│   │   └── state/          配置、DSH_HOME 解析、原子写
-│   ├── scripts/            install / uninstall / pair-cli
-│   └── test/               80 个单测（node:test）
-├── app/                    Expo React Native 客户端
-│   ├── src/app/            Expo Router 路由（连接/列表/聊天/设置）
-│   ├── src/lib/            协议类型、HTTP+SSE 客户端、zustand store
-│   ├── src/components/     beUI Native 组件 + chat 组件
-│   └── app.json            图标 / 包名 / cleartext / 插件配置
-├── docs/                   协议、架构、构建、验证报告与截图
-├── tools/                  验证工具（独立协议客户端 / mock / e2e / APK 校验）
-├── dist/                   已构建 APK（git 忽略，见 Releases）
-├── deepseek.svg            品牌原始矢量（鲸鱼 + 文字）
-└── deepseek-text.svg
-```
-
-## 开发
-
-```bash
-# Host 插件：80 个单测
+# Host 插件测试
 node plugin/test/run-all.mjs
 
-# App：类型检查 / lint / 单测 / 打包冒烟
-cd app
-npx tsc --noEmit
-npx expo lint
-node --test src/lib/__tests__/*.test.ts src/lib/__tests__/*.test.mjs
-npx expo export --platform android --output-dir dist-export --clear
-
-# 独立协议客户端（黑盒验证）
-node tools/verify/mock-server.mjs --port 8790
-node tools/verify/protocol-client.mjs --url http://127.0.0.1:8790 --code 123456 smoke
+# App 依赖与检查
+npm --prefix app ci
+npm --prefix app run typecheck
+npm --prefix app run lint
+npm --prefix app test
 ```
 
-本机 Node 访问外网需代理时：`$env:HTTPS_PROXY='http://127.0.0.1:7890'; $env:NODE_USE_ENV_PROXY='1'`。
+原生语音依赖由 `npm --prefix app run voice:prepare` 下载并校验。APK 构建流程、Windows 环境问题及签名说明见 [Android 构建说明](docs/build-android.md)。
 
-## 验证结果
+[验证记录索引](docs/verification/README.md)按日期记录检查对象和结果。界面示例用于说明操作；不同版本的历史报告不作为当前全部功能已通过验收的结论。
 
-真实 DSH **0.2.2-rc.1** 宿主 + Android 13 模拟器实测（非 mock）：
-
-| 项目 | 结果 | 证据 |
-|---|---|---|
-| 插件单测 | **80 / 80**（连跑 3 次稳定） | `node plugin/test/run-all.mjs` |
-| 真实宿主 e2e | **24 / 24 PASS**（流式帧、取消、重连快照、rename、history、设备撤销） | [e2e-report.md](docs/verification/e2e-report.md) |
-| 真实宿主负向 | **36 PASS / 0 FAIL**（未知会话 404、非法时区 400、重复 requestId、配对锁定、26 MB body 413…） | [negative-real-host.md](docs/verification/negative-real-host.md) |
-| App 质量门 | `tsc` 0 error、`expo lint` 0 problem、单测 **94 / 94**、`expo export` 成功 | [app-build-report.md](docs/verification/app-build-report.md) |
-| APK | 包名 `dev.dsh.remote`、cleartext、arm64-v8a + x86_64、图标校验通过 | [app-build-report.md](docs/verification/app-build-report.md) |
-| 模拟器全链路 | 配对 → 会话 → 历史 → 发送 → 工具卡/流式 → 停止 → **PONG** | [app-emulator-report.md](docs/verification/app-emulator-report.md) |
-
-## 远程访问（公网）
-
-插件 **0.1.3** 起内置 Cloudflare Tunnel：
-
-```yaml
-- id: dsh-remote
-  config:
-    port: 8790
-    cloudflare:
-      enabled: true
-      mode: quick          # 随机 https://xxx.trycloudflare.com；长期用 named + token + hostname
+```text
+dsh-remote/
+├── plugin/       Host 插件、桌面设置页、安装脚本和测试
+├── app/          Android App、协议客户端及本地语音模块
+├── docs/         架构、协议、构建、示例图片和验证记录
+├── tools/        构建、资源处理及独立协议验证工具
+└── dist/         本地构建产物，公开安装包通过 Releases 分发
 ```
 
-配对页仍只有一个二维码：二维码里同时写入局域网地址和公网地址（`alt`），手机 App 先试局域网、失败自动切公网，同一个配对码两条路径都可用。页面上的「公网访问」卡片只用于展示地址和隧道状态。也支持 `publicUrl` 静态地址（Caddy/Nginx/frp），或直接用 Tailscale 组网。详见 [docs/remote-access.md](docs/remote-access.md)。
+## 访问控制与限制
 
-<p align="center"><img src="docs/verification/screenshots/dsh-settings-remote.png" width="720" alt="DSH 设置 → 远程控制" /></p>
+插件默认监听 `0.0.0.0:8790`。配对码有效期为十分钟，成功配对后轮换，连续失败会锁定；设备 token 在 Host 侧仅保存 SHA-256 摘要，可逐台撤销。配对页面仅允许本机访问。
 
+局域网 HTTP 适用于可信网络，远程流量通过 Tailscale 加密传输。不要将 8790 端口直接映射到公网。插件在 DSH 进程内运行，安装来源应可信。
 
-## 安全
+手机端尚未提供 `ask_user_question` 回答面板、会话搜索、推送通知、完整文件编辑与 Git 操作。自动化配置和插件管理仍在桌面端完成。
 
-- 仅监听局域网；配对码一次性、10 分钟 TTL、连续失败锁定；
-- 设备 token 只存 SHA-256，可单独撤销；
-- `/pair` 页面仅 loopback 可访问；
-- **明文 HTTP，仅限可信 Wi-Fi**；不要直接暴露到公网，如需公网请自行加 TLS 反向代理；
-- 插件在 DSH 进程内运行，拥有与本机 DSH 相同权限，只安装可信来源的包。
+## 文档
 
-## 已知限制 / Roadmap
+| 文档 | 内容 |
+|---|---|
+| [界面示例](docs/screenshots.md) | 四个主要页面及操作说明 |
+| [远程访问](docs/remote-access.md) | Tailscale、旧配置迁移与连接排查 |
+| [npm 发布](docs/publishing-npm.md) | 发布、认证和 DSH 插件页更新 |
+| [系统架构](docs/architecture.md) | Host 桥接、网络服务与访问控制 |
+| [App 架构](docs/app-architecture.md) | 客户端模块与状态管理 |
+| [协议 v1](docs/protocol.md) | HTTP 接口、SSE 事件与抓包记录 |
+| [Android 构建](docs/build-android.md) | 环境、构建命令与本机问题记录 |
+| [验证记录](docs/verification/README.md) | 各版本的检查范围与证据 |
 
-- [x] 文本、图片及 Android 本地语音转文字输入
-- [ ] `ask_user_question` 的手机端回答面板（工具审批已支持）
-- [x] 按桌面项目分组、完整项目清单与子 Agent 视图
-- [x] 普通工具与 PTC 工具结果、网页来源、任务面板、文件改动及交付图片
-- [ ] 会话搜索
-- [ ] 推送通知（审批 / 完成）
-- [ ] PWA 版（复用同一协议）
-- [ ] 内置 TLS / 反向代理辅助
+## 许可证
 
-### 本地语音与工作流适配
-
-Android 0.1.15 配合插件 0.1.14：进入「设置 → 本地语音输入」下载并校验约 241 MB 模型，可选择官方源或国内镜像。回到对话点击麦克风，完成录音后在手机 CPU 上识别；文字填入草稿，编辑确认后再发送。支持自动、普通话、粤语、英语、日语和韩语，单次最多 90 秒；离开应用或会话会取消当前语音输入。
-
-与当前 DSH 桌面相同的 SenseVoiceSmall INT8 + Silero VAD 模型，通过 sherpa-onnx Android 原生运行，录音不上传。构建先执行 `npm --prefix app run voice:prepare` 下载并校验固定版本的原生依赖；模型由设置页下载，不打入 APK。模型和依赖清单见 [本轮验证记录](docs/verification/mobile-workflow-2026-11-12.md)。
-
-对话现在默认停在最新消息，只保留一个「加载更早的消息」入口。网页工具可展开查看 Markdown、来源和结果图片；任务面板同步普通 Todo 与团队任务。文件改动按原始快照显示 diff，回复中的文件和图片支持手机预览及系统分享。若桌面已释放历史改动快照，会明确说明无法还原，不使用当前文件伪造旧 diff。
-
-聊天页顶部使用原生模糊和渐变遮罩。输入区透明，只保留胶囊边框；任务列表在独立的滚动边界内裁切，与输入框保持间距。输入框在系统底部安全区上方额外留出 12dp，键盘出现时保留 12dp 间隔；输入时任务面板暂时收为摘要，键盘关闭后恢复原来的展开状态。验证见 [聊天布局记录](docs/verification/chat-chrome-2026-11-13.md)。
-
-桌面的自动化配置、插件管理、`ask_user_question` 回答面板、完整文件编辑与 Git 操作尚未移植；本轮不代表全部桌面功能已覆盖。
-
-## 协议 / 文档索引
-
-- [docs/protocol.md](docs/protocol.md) — 移动协议 v1（含真实抓包）
-- [docs/architecture.md](docs/architecture.md) — 系统设计
-- [docs/build-android.md](docs/build-android.md) — 构建 APK（含 Windows 坑）
-- [docs/app-architecture.md](docs/app-architecture.md) — App 模块边界与 store 契约
-- [docs/publishing-npm.md](docs/publishing-npm.md) — 发布 `dsh-remote-harness` 到 npm（含 Actions）
-- [docs/remote-access.md](docs/remote-access.md) — 公网访问：Cloudflare Tunnel / Caddy / Tailscale
-- [docs/verification/README.md](docs/verification/README.md) — 验证索引
-
-## License
-
-[MIT](LICENSE) © shanchuann
-
-<sub>DeepSeek Harness 是 DeepSeek 的产品；本仓库是非官方的社区远程访问方案。DeepSeek 鲸鱼图标与文字标识来自仓库内 [deepseek-whale.png](app/assets/images/deepseek-whale.png) / [deepseek-wordmark.png](app/assets/images/deepseek-wordmark.png)。</sub>
+[MIT](LICENSE) © shanchuann。DSH Remote 是社区项目，非 DeepSeek 官方产品。DeepSeek 图标与文字标识来自仓库内的品牌资源。

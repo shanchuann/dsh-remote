@@ -1,140 +1,78 @@
-# App 架构与文件所有权（app-core / app-chat 必读）
+# Android App 架构
 
-App 目录：`D:\Code\dsh-remote\app`（Expo SDK 58 / RN 0.88 / TypeScript / Expo Router / uniwind + beUI Native）。
-协议：`docs/protocol.md`（v1，含 §9 真实抓包）。设计基调：DeepSeek 品牌蓝 `#4D6BFE`，暗色优先，移动端手感（大点击区、底部安全区）。
+App 使用 Expo SDK 58、React Native 0.88、TypeScript 和 Expo Router。界面由 beUI Native 组件及聊天组件构成，通过 HTTP/JSON 和 SSE 访问 Host 插件。界面示例见[页面说明](screenshots.md)，通信字段见[协议 v1](protocol.md)。
 
-## 1. 构建与命令
-- 依赖用 `npx expo install <pkg>` 安装（SDK 兼容版本）；JS 库可 `npm install`。
-- 类型检查：`npx tsc --noEmit`；lint：`npx expo lint`。交付前必须两者通过（允许已知第三方组件的小问题，但要报告）。
-- **不要手写/修改 `android/`、`ios/`**；原生配置写进 `app.json`（icon/splash 由 Lead 负责）。`npx expo prebuild` 与 APK 构建由 Lead/verifier 执行。
-- 入口：Expo Router（`main: "expo-router/entry"`，路由目录 `src/app/`）。若脚手架尚未装 router，app-core 负责 `npx expo install expo-router react-native-safe-area-context react-native-screens expo-linking expo-constants` 并配置。
+## 模块划分
 
-## 2. 文件所有权（硬边界，不要越界写别人的文件）
+| 模块 | 职责 |
+|---|---|
+| `src/app/` | 连接、项目与会话列表、对话、设置等路由页面 |
+| `src/lib/client.ts` | HTTP 请求、认证、SSE 连接与事件分发 |
+| `src/lib/store.ts` | 连接生命周期、项目与会话状态、快照和增量事件、审批与模型操作 |
+| `src/lib/pairing.ts` | Host 地址校验、二维码负载解析及配对信息 |
+| `src/lib/types.ts` | HTTP 响应、SSE 载荷和功能能力声明 |
+| `src/lib/transcript.ts` | 将会话事件与流式片段转换为界面渲染项 |
+| `src/lib/voice.ts` | 本地语音模型状态、识别流程和语言选择 |
+| `src/components/chat/` | 消息、工具结果、任务面板、文件预览、输入与模型选择 |
+| `src/components/common/` | 图标、连接状态及通用界面组件 |
+| `modules/dsh-voice/` | Android 本地语音与原生交互模块 |
 
-### app-core 拥有
-- `app/src/app/_layout.tsx`、`app/src/app/index.tsx`（连接/配对页）、`app/src/app/sessions.tsx`（会话列表）、`app/src/app/settings.tsx`
-- `app/src/lib/**`：`types.ts`（协议类型）、`client.ts`（HTTP+SSE 客户端）、`store.ts`（zustand store）、`pairing.ts`（QR 解析/手动输入/持久化）、`config.ts`
-- `app/src/components/common/**`（按钮、空状态、错误条、连接状态）
-- `app/package.json` / `app.json` / `tsconfig.json`（app.json 的 icon/splash 键由 Lead 定稿，app-core 只加 permissions/plugin 配置时先告知 Lead）
+## 数据流
 
-### app-chat 拥有
-- `app/src/app/session/[id].tsx`（聊天页路由）
-- `app/src/components/chat/**`（消息列表、气泡、工具卡、审批卡、输入区、模型选择弹层）
-- `app/src/lib/transcript.ts`（纯函数：事件数组 + 流式片段 → 渲染项；可单测）
-- `app/src/components/chat/__tests__/**` 或 `app/src/lib/__tests__/`（transcript 单测）
-
-### 共享约定
-- app-core 先落地 `src/lib/types.ts` + `src/lib/store.ts` 的**接口骨架**（含 TSDoc），app-chat 只按接口消费；需要改接口先 send_message 给 app-core 并抄送 lead。
-- 任何跨边界修改先在任务板/消息里说明。
-
-## 3. 运行时架构
-
-```
-RemoteClient (src/lib/client.ts)
-  - fetch JSON RPC: GET/POST /v1/*
-  - SSE: GET /v1/events?token=... （用 react-native-sse 或自写 XHR 流；需断线重连/心跳）
-  - 事件分发：on('event', handler)
-        |
-useRemoteStore (zustand, src/lib/store.ts)
-  - connection / sessions / currentSession / models / approvals
-        |
-screens (src/app/**) -> beUI Native 组件 (src/components/**)
+```mermaid
+flowchart TD
+    HOST[Host 插件] <-->|HTTP/JSON + SSE| CLIENT[RemoteClient]
+    CLIENT --> STORE[zustand store]
+    STORE --> PROJECTION[会话事件投影]
+    PROJECTION --> UI[页面与聊天组件]
+    UI -->|用户操作| STORE
+    STORE -->|请求| CLIENT
 ```
 
-### 3.1 RemoteClient 必须提供的 API（app-core 实现，签名可细化但语义不变）
-```ts
-class RemoteClient {
-  constructor(cfg: { baseUrl: string; token?: string });
-  connectEvents(): void;                 // 建立 SSE，自动重连；触发下面的事件
-  disconnect(): void;
-  on(event: 'event'|'assistant'|'snapshot'|'state'|'status'|'listChanged'|'approval'|'approvalResolved'|'error'|'open'|'close', cb): () => void;
+`RemoteClient` 负责传输和事件分发，`useRemoteStore` 负责应用状态与连接生命周期。聊天组件从事件投影读取消息、工具调用和任务状态，页面不直接拼接协议请求。
 
-  static async pair(baseUrl, code, deviceName): Promise<PairResult>;
-  health(): Promise<Health>;
-  host(): Promise<HostInfo>;
-  listSessions(): Promise<{items: SessionRow[]}>;
-  createSession(opts): Promise<{sessionId: string}>;
-  getSession(id): Promise<SessionDetail>;
-  history(id, opts): Promise<{records, cursor, hasMore}>;
-  openSession(id, opts): Promise<{subscriptionId: string}>;   // 之后 SSE 收 session.snapshot/event/assistant/state
-  closeSession(id): Promise<void>;
-  prompt(id, payload): Promise<{accepted: boolean}>;
-  cancel(id): Promise<{accepted: boolean}>;
-  rename(id, title): Promise<{title, seq}>;
-  selectModel(id, sel): Promise<{selected}>;
-  models(): Promise<ModelCatalog>;
-  approvals(): Promise<{items: Approval[]}>;
-  answerApproval(id, decision): Promise<{resolved: boolean}>;
-  devices(): Promise<{items: Device[]}>;
-  deleteDevice(id): Promise<{removed: boolean}>;
-}
+## 连接与持久化
+
+App 支持手动填写 Host 地址或扫描二维码。二维码可包含主地址和备用地址；检测到 Tailscale 时，Host 优先提供 Tailscale IPv4。网络配置及排查见[远程访问](remote-access.md)。
+
+设备 token 保存在 SecureStore，地址与设备显示信息保存在本地持久化存储中。App 启动时恢复已保存的连接，SSE 断开后按重连策略恢复；连接恢复后，重新打开当前会话订阅。
+
+认证失效时应进入重新配对流程。切换 Host 或会话后，旧订阅和迟到的响应不能覆盖当前页面状态。
+
+## 会话与事件
+
+打开会话后，Host 发送快照及后续事件：
+
+- 快照替换当前事件集，同时恢复标题、模型、任务和流式状态。
+- 增量事件按序列号去重后追加，历史分页使用服务端返回的边界。
+- 流式文本显示为临时回复，收到最终消息后与持久化记录合并。
+- 发送消息时显示带请求标识的本地待确认项，收到宿主确认后去重。
+
+`transcript.ts` 负责事件投影，应保持可独立测试。用户消息、助手回复、工具调用与结果按各自标识关联，内部注入消息按来源过滤。文件改动依据宿主保存的快照展示，不能用当前文件内容代替缺失的历史快照。
+
+## 输入与本地语音
+
+对话输入支持文字、图片和语音转文字。语音模型由用户在设置中下载并校验，通过 sherpa-onnx 在 Android 本地运行，识别结果先写入草稿，由用户确认后发送。
+
+键盘出现时，输入区保持在键盘上方。任务面板使用独立滚动边界；输入时可收起为摘要，键盘关闭后恢复。输入菜单的位置依赖输入区完成布局后的实际边界，相关记录见[菜单定位验证](verification/menu-anchor-2026-11-13.md)。
+
+## 界面约定
+
+页面随系统切换浅色和深色主题，颜色使用主题 token。交互组件需处理系统安全区、软键盘、长文本及工具输出折叠。较长的消息列表、任务列表和文件内容分别管理滚动边界，避免输入区遮挡内容。
+
+模型选择、工具审批和会话操作由 store 调用客户端完成。功能是否可用应参考 Host 的能力声明，不能仅依据 App 版本判断。
+
+## 开发检查
+
+在仓库根目录运行：
+
+```bash
+npm --prefix app ci
+npm --prefix app run typecheck
+npm --prefix app run lint
+npm --prefix app test
 ```
 
-### 3.2 Store 形状（app-core 实现；app-chat 消费）
-```ts
-interface RemoteState {
-  connection: { status: 'idle'|'connecting'|'connected'|'error'; baseUrl?: string; host?: HostInfo; error?: string };
-  sessions: SessionRow[];
-  sessionsLoading: boolean;
-  current: {
-    sessionId?: string;
-    title?: string;
-    running: boolean;
-    active: boolean;
-    items: TranscriptItem[];        // app-chat 的 transcript.ts 输出（store 只存原始 events，items 由选择器计算）
-    events: SessionEvent[];
-    streaming: { attemptId?: string; text: string; reasoning: string; active: boolean };
-    pendingApprovals: Approval[];
-    loading: boolean;
-    error?: string;
-  };
-  models?: ModelCatalog;
-  actions: {
-    connect(input: {baseUrl: string; code: string; deviceName: string}): Promise<void>;
-    restore(): Promise<boolean>;    // 启动时用已存 token 重连
-    disconnect(): Promise<void>;
-    refreshSessions(): Promise<void>;
-    createSession(opts?: {cwd?: string}): Promise<string>;
-    openSession(id: string): Promise<void>;
-    closeSession(): Promise<void>;
-    sendPrompt(text: string): Promise<void>;
-    cancel(): Promise<void>;
-    answerApproval(id: string, decision: 'allow'|'reject'): Promise<void>;
-    selectModel(sel: {provider: string; model: string; reasoningEffort?: string}): Promise<void>;
-    loadModels(): Promise<void>;
-  };
-}
-export const useRemoteStore = create<RemoteState>()(...)
-```
-- **store 必须处理**：SSE 重连后对当前会话重新 `openSession`；`session.snapshot` 全量替换 events；`session.event` 按 seq 去重追加；`session.assistant` 写入 streaming；收到 `assistant/message` 后清空 streaming；`session.state` 更新 running。
-- 乐观消息：`sendPrompt` 立即加入本地 pending 用户气泡（带 requestId），收到 `user/message`（source.kind==='user' 且 rpcId 相同）后去重。
-- token 存 `expo-secure-store`；baseUrl/设备名存 AsyncStorage。
+依赖安装需与当前 Expo SDK 兼容；涉及原生配置时，更新 `app.json`、Expo 配置插件或本地原生模块，再重新生成 Android 工程。不要仅修改生成目录作为持久修复。
 
-### 3.3 transcript.ts（app-chat 实现，必须纯函数可测）
-```ts
-type TranscriptItem =
-  | { kind: 'user'; id: string; text: string; images?: ImageRef[]; time: number; pending?: boolean }
-  | { kind: 'assistant'; id: string; text: string; reasoning?: string; time: number; streaming?: boolean }
-  | { kind: 'tool'; id: string; callId: string; name: string; input?: unknown; status: 'running'|'ok'|'error'; result?: string; time: number }
-  | { kind: 'approval'; id: string; approval: Approval }
-  | { kind: 'turn'; id: string; label: 'start'|'end'; time: number }
-  | { kind: 'todo'; id: string; items: unknown[]; time: number };
-export function buildTranscript(events: SessionEvent[], streaming: StreamingState): TranscriptItem[];
-```
-规则见 `docs/protocol.md §9.2`：只显示 `user/message`（source.kind==='user'）、`assistant/message`、`tool/call`/`tool/result`（按 callId 合并）、`approval/asked|decided`、`todo/write`；注入消息隐藏。流式文本作为最后一个 assistant item 追加（`streaming?`），收到最终 `assistant/message` 后替换。
-
-## 4. UI/组件（app-chat）
-beUI Native 组件已由 Lead 安装到 `app/src/components/<slug>/`（见目录），可用：
-- 消息：`message-bubble`、`message`、`message-scroller`、`streaming-response`
-- 输入：`prompt-input`（attachments/voice/stop；当前只接文本 + 停止）
-- 工具/审批：`agent-activity`、`tool-result`、`tool-approval`、`approval-card`、`loading-states`
-- 代码/任务：`code-block`、`todo-list`
-用 `className` + Tailwind（uniwind）写样式；颜色用主题 token（`bg-background/text-foreground/bg-primary` 等，勿硬编码色值，品牌蓝已在 theme.css）。所有屏幕适配深/浅色（系统主题），底部安全区用 `useSafeAreaInsets`。
-不要修改 `app/src/components/<slug>/` 下的库文件（要改就复制到 `app/src/components/chat/` 自建版本）。
-
-## 5. 验收（两块共同）
-- `npx tsc --noEmit` 通过；
-- 连接页：手动输入 `http://<ip>:8790` + 6 位码可配对；扫码入口（expo-camera）可用；
-- 列表页：展示 title/时间/running 指示、下拉刷新；
-- 聊天页：历史、流式回复（逐字）、工具调用卡、停止按钮、审批卡（收到即弹）、模型选择弹层、断线重连提示；
-- 退出/重进 App 自动恢复连接（token 持久化）。
+APK 构建和原生语音依赖准备见 [Android 构建说明](build-android.md)。验证时需区分静态检查、隔离宿主测试、模拟器检查和实机结果，分别记录版本及检查范围。

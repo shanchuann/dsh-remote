@@ -2,7 +2,7 @@
 
 ## 目标
 
-让手机在同一局域网内连接**正在运行的** DeepSeek Harness 桌面版，像用桌面 IDE 一样用手机查看/继续会话、发消息、看流式回复、审批工具调用、切换模型。不引入云端中转，所有流量在局域网内直连。
+Android App 通过局域网或 Tailscale 连接正在运行的 DeepSeek Harness，查看项目与会话、发送消息、接收流式回复并处理工具审批。Host 插件提供 HTTP/JSON 和 SSE 接口；Tailscale 连接由操作系统客户端管理，插件不启动公网隧道。
 
 ## 总览
 
@@ -12,12 +12,12 @@
 │    └─ DSH Host 进程（Cordis 插件树：sessions / agents / sessionController ...）   │
 │         └─ @dsh-remote 插件（本仓库 plugin/）                                     │
 │              ├─ DshBridge     ← 进程内直调 sessionController + agent 事件          │
-│              ├─ HTTP 服务      ← 0.0.0.0:8790（LAN）                             │
+│              ├─ HTTP 服务      ← 0.0.0.0:8790（LAN / Tailscale）                 │
 │              ├─ SSE Hub       ← /v1/events，事件多路复用                          │
 │              ├─ 配对/鉴权      ← 6 位码 + 设备 token（SHA-256 存储）               │
 │              └─ /pair 页面     ← 仅 loopback，显示二维码/配对码                   │
 └──────────────────────────────────────────────────────────────────────────────────┘
-                                   ▲  LAN HTTP + SSE (JSON)
+                                   ▲  LAN / Tailscale HTTP + SSE (JSON)
                                    │  Bearer token
 ┌─────────────────────────── 手机 (Android) ───────────────────────────────────────┐
 │  DSH Remote（React Native / Expo，app/）                                         │
@@ -27,12 +27,12 @@
 └──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## 为什么是「Host 插件 + LAN 服务」而不是复用 Web GUI
+## Host 服务桥接
 
 - 桌面版的 Web 服务绑定 `127.0.0.1`（Electron 渲染进程走 IPC），手机无法直接访问；
 - DSH 自带的 Web 客户端协议是 Typert RPC（WebSocket 多路复用 + 生成式类型），在 RN 上复刻成本高、版本耦合强；
-- Host 插件能**进程内**调用 `ctx.sessionController` 的 `list/page/events/follow/prompt/cancel/selectModel/modelCatalog/create`，与官方 Web 客户端走同一套业务逻辑，天然支持预设/审批/权限/持久化；
-- 自定义的窄协议（HTTP+SSE）易实现、易调试、对网络抖动友好，且不依赖 DSH 内部生成代码的版本。
+- Host 插件在进程内调用 `ctx.sessionController` 的 `list/page/events/follow/prompt/cancel/selectModel/modelCatalog/create`，复用宿主的会话、审批与持久化服务；
+- App 使用 HTTP/JSON 和 SSE，不依赖 DSH 内部生成的 RPC 客户端代码。
 
 ## 关键设计
 
@@ -52,10 +52,10 @@ DSH 的审批是 **agent 作用域的 waterfall**（`approval/request`）。插�
 （用户 profile 若默认 `approval: never`，审批不会出现；该能力为可选。）
 
 ### 3. 安全模型
-- 仅监听局域网；配对码 6 位、TTL 10 分钟、失败锁定；成功后轮换；
+- 默认监听 `0.0.0.0:8790`，接受局域网及 Tailscale 网卡请求，实际可达范围由系统网络与防火墙决定；配对码为六位数字，有效期十分钟，连续失败锁定，成功后轮换；
 - 设备 token 随机 32 字节，Host 只存 SHA-256；每设备可单独撤销；
 - `/pair` 页面只允许 loopback；
-- 明文 HTTP（局域网场景）；如需公网需自行加 TLS 反向代理（协议不排斥，但 v1 不内置证书管理）。
+- 局域网使用 HTTP；远程访问使用系统 Tailscale 加密网络，Host 自动发现 Tailscale IPv4，二维码优先使用该地址并携带局域网备用地址。
 
 ### 4. 版本兼容
 - 协议带 `protocol: 1`，`/v1/health` 与 SSE `hello` 都返回；未知事件/字段必须忽略；
@@ -80,10 +80,16 @@ DSH 的审批是 **agent 作用域的 waterfall**（`approval/request`）。插�
 | `docs/protocol.md` | 移动协议 v1（含真实抓包 §9） |
 | `docs/app-architecture.md` | App 文件所有权与 Store/Client 契约 |
 
-## 限制与后续
+## 安装与更新
 
-- v1 只支持文本输入（协议已预留 image content blocks，App 未接图片选择）；
+Host 插件通过 `dsh.bundle` 声明组合包，通过 `dsh.client` 向桌面设置页注入远程控制界面。npm registry 安装的依赖可由 DSH 插件页检测和更新；本地文件、离线包与脚本安装不参与该检测。安装来源及迁移步骤见 [npm 发布说明](publishing-npm.md)。
+
+## 功能边界
+
+- App 支持文字、图片及 Android 本地语音转文字；语音识别在手机完成，再将文字草稿发送至 Host；
 - v1 未做用户问题（`ask_user_question`）的手机端回答面板，审批已支持；
-- 未内置 TLS/公网穿透；多设备同时连接受支持（各自独立 token），但每设备一条 SSE；
+- 不内置 VPN 或公网隧道进程管理；远程连接依赖电脑和手机已连接 Tailscale；多设备同时连接受支持（各自独立 token），但每设备一条 SSE；
 - 会话列表的 `lastMessage` 暂为 null（Host 列表行不含最近消息文本，后续可按需读取投影）；
-- 后续可加：推送通知（审批/完成）、图片/文件上传、会话搜索、子 Agent 视图、PWA 版（复用同一协议）。
+- 项目分组、子智能体、任务面板及文件与图片预览已接入；完整文件编辑、Git 操作、会话搜索与推送通知未提供。
+
+页面示例见[界面说明](screenshots.md)，操作与网络排查见[远程访问](remote-access.md)。
