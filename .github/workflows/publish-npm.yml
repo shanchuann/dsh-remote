@@ -5,6 +5,10 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -36,9 +40,26 @@ jobs:
           }
           console.log(`Publishing ${pkg.name}@${pkg.version}`);
           NODE
+      - name: Check npm version
+        id: npm-version
+        working-directory: plugin
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from 'node:fs';
+          const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+          const url = `https://registry.npmjs.org/${encodeURIComponent(pkg.name)}/${encodeURIComponent(pkg.version)}`;
+          const response = await fetch(url, { signal: AbortSignal.timeout(30000) });
+          if (response.status !== 404 && !response.ok) {
+            throw new Error(`npm version lookup failed: HTTP ${response.status}`);
+          }
+          const exists = response.ok;
+          appendFileSync(process.env.GITHUB_OUTPUT, `publish=${!exists}\n`);
+          console.log(exists ? `${pkg.name}@${pkg.version} already exists; skipping publish` : `${pkg.name}@${pkg.version} is not published`);
+          NODE
       - name: Test
         working-directory: plugin
         run: node test/run-all.mjs
       - name: Publish
+        if: steps.npm-version.outputs.publish == 'true'
         working-directory: plugin
         run: npm publish --access public --provenance

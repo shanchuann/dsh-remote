@@ -81,6 +81,10 @@ npm publish ./dist/dsh-remote-harness-0.1.16.tgz --access public --registry http
 
 `plugin/package.json` 的 `repository.url` 应为 `git+https://github.com/shanchuann/dsh-remote.git`。首次验证必须使用已提交且尚未发布的版本，不能通过重复发布旧版本验证认证。只有实际发布成功才能确认 npm 端授权生效。
 
+发布工作流按组串行执行，正式发布前查询 npm 官方源。如果同名同版本已经存在，会跳过发布；查询异常则停止，不将网络错误当作版本不存在。重复推送 Git 代码不会覆盖 npm 包。普通分支推送不会触发发布；只有匹配的标签或手动运行会触发该工作流。
+
+2026-11-13 已确认 npm 的 `latest` 为 0.1.16，包的 SHA-1 为 `b473d14364f1a783a46e524ba4eb1c92882e4673`，与本次 README 更新后的候选包一致。此版本无需再次发布；后续有内容变更时，应递增版本号。
+
 配置要求见 [npm 可信发布说明](https://docs.npmjs.com/trusted-publishers/)。
 
 ## 从当前离线包迁移
