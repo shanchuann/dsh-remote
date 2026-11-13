@@ -10,6 +10,7 @@ import {
   useState,
 } from "react";
 import {
+  Keyboard,
   Pressable,
   type PressableProps,
   ScrollView,
@@ -65,6 +66,8 @@ type MenuContextValue = {
   setOpen: (open: boolean) => void;
   anchor: Frame | null;
   triggerRef: React.RefObject<ViewInstance | null>;
+  /** Re-reads the trigger position into the anchor. */
+  remeasure: () => void;
   reduce: boolean;
   /** Item frames in layout order, read on the UI thread while sliding. */
   slots: SharedValue<Slot[]>;
@@ -115,6 +118,12 @@ export type MenuProps = {
   onOpenChange?: (open: boolean) => void;
   /** Opens and closes without motion, independently of the system preference. */
   disableAnimation?: boolean;
+  /**
+   * The box the panel belongs to. The trigger opens the menu, but the panel is
+   * measured against this view, so it clears a composer's rows instead of
+   * covering them.
+   */
+  anchorRef?: React.RefObject<ViewInstance | null>;
   children: ReactNode;
 };
 
@@ -128,6 +137,7 @@ export function Menu({
   defaultOpen = false,
   onOpenChange,
   disableAnimation = false,
+  anchorRef,
   children,
 }: MenuProps) {
   const reducedMotion = useReducedMotionPreference();
@@ -136,6 +146,7 @@ export function Menu({
   const open = controlledOpen ?? internalOpen;
   const [anchor, setAnchor] = useState<Frame | null>(null);
   const triggerRef = useRef<ViewInstance>(null);
+  const openGeneration = useRef(0);
   const slots = useSharedValue<Slot[]>([]);
   const highlight = useSharedValue(-1);
   const entries = useRef(new Map<string, Entry>());
@@ -145,24 +156,107 @@ export function Menu({
   const [direction, setDirection] = useState(1);
   const page = stack[stack.length - 1]?.id ?? ROOT;
 
+  /** Measures the trigger in window coordinates, or reports that it is gone. */
+  const measureTrigger = useCallback(
+    (done: (frame: Frame | null) => void) => {
+      const target = anchorRef?.current ?? triggerRef.current;
+      if (!target) {
+        done(null);
+        return;
+      }
+      target.measureInWindow((x, y, width, height) =>
+        done({ x, y, width, height }),
+      );
+    },
+    [anchorRef],
+  );
+
+  const applyAnchor = useCallback((frame: Frame) => {
+    setAnchor((current) =>
+      current &&
+      current.x === frame.x &&
+      current.y === frame.y &&
+      current.width === frame.width &&
+      current.height === frame.height
+        ? current
+        : frame,
+    );
+  }, []);
+
+  /** Re-reads the trigger position, so an open panel sticks to its trigger. */
+  const remeasure = useCallback(() => {
+    measureTrigger((frame) => {
+      if (frame) applyAnchor(frame);
+    });
+  }, [applyAnchor, measureTrigger]);
+
+  /**
+   * Waits until the trigger stops moving. The composer slides when the keyboard
+   * comes or goes, and opening the panel mid-slide leaves it stranded, so the
+   * panel waits for the input to reach the place it is going to stay.
+   */
+  const waitForStillTrigger = useCallback(
+    (done: () => void) => {
+      const deadline = Date.now() + 800;
+      let lastY: number | null = null;
+      let still = 0;
+      const tick = () => {
+        measureTrigger((frame) => {
+          if (!frame) {
+            done();
+            return;
+          }
+          still = lastY !== null && Math.abs(frame.y - lastY) < 1 ? still + 1 : 0;
+          lastY = frame.y;
+          if (still >= 2 || Date.now() >= deadline) done();
+          else setTimeout(tick, 48);
+        });
+      };
+      tick();
+    },
+    [measureTrigger],
+  );
+
   const setOpen = useCallback(
     (next: boolean) => {
-      const apply = () => {
-        if (controlledOpen === undefined) setInternalOpen(next);
-        onOpenChange?.(next);
+      const apply = (value: boolean) => {
+        if (controlledOpen === undefined) setInternalOpen(value);
+        onOpenChange?.(value);
       };
-      if (next) {
-        // Measure the trigger first, so the menu opens from where it is now.
-        triggerRef.current?.measureInWindow((x, y, width, height) => {
-          setAnchor({ x, y, width, height });
-          apply();
-        });
-        if (!triggerRef.current) apply();
-      } else {
-        apply();
+      if (!next) {
+        openGeneration.current += 1;
+        apply(false);
+        return;
       }
+      const generation = ++openGeneration.current;
+      const show = () => {
+        if (generation !== openGeneration.current) return;
+        // Measure right before opening, so the panel grows from where the
+        // trigger is now rather than where it was when it was pressed.
+        measureTrigger((frame) => {
+          if (generation !== openGeneration.current) return;
+          if (frame) applyAnchor(frame);
+          apply(true);
+        });
+      };
+      // The panel opens in its own window, which takes focus and drops the
+      // IME on Android. Let the composer settle first: the input rises back to
+      // its resting place, and the panel opens against that position instead
+      // of floating where the keyboard used to keep it.
+      if (!Keyboard.isVisible()) {
+        show();
+        return;
+      }
+      Keyboard.dismiss();
+      waitForStillTrigger(show);
     },
-    [controlledOpen, onOpenChange],
+    [
+      applyAnchor,
+      controlledOpen,
+      measureTrigger,
+      onOpenChange,
+      waitForStillTrigger,
+    ],
   );
 
   useEffect(() => {
@@ -187,10 +281,41 @@ export function Menu({
   // A controlled open without a measured trigger still needs its anchor.
   useEffect(() => {
     if (!open || anchor) return;
-    triggerRef.current?.measureInWindow((x, y, width, height) =>
-      setAnchor({ x, y, width, height }),
-    );
-  }, [anchor, open]);
+    remeasure();
+  }, [anchor, open, remeasure]);
+
+  // While the panel is up, keep it glued to its trigger: the keyboard can
+  // still come or go, shifting the composer the menu was opened from.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Follow the trigger for a moment after opening: the composer can still be
+    // sliding, and the panel should land where the input comes to rest.
+    const deadline = Date.now() + 700;
+    let lastY: number | null = null;
+    let still = 0;
+    const tick = () => {
+      measureTrigger((frame) => {
+        if (cancelled || !frame) return;
+        const moved = lastY !== null && Math.abs(frame.y - lastY) >= 1;
+        still = moved ? 0 : still + 1;
+        lastY = frame.y;
+        if (moved) applyAnchor(frame);
+        if (still < 3 && Date.now() < deadline) timer = setTimeout(tick, 48);
+      });
+    };
+    timer = setTimeout(tick, 48);
+    const subscriptions = [
+      Keyboard.addListener("keyboardDidShow", remeasure),
+      Keyboard.addListener("keyboardDidHide", remeasure),
+    ];
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      for (const subscription of subscriptions) subscription.remove();
+    };
+  }, [applyAnchor, measureTrigger, open, remeasure]);
 
   const register = useCallback(
     (id: string, entry: Entry | null) => {
@@ -226,6 +351,7 @@ export function Menu({
       setOpen,
       anchor,
       triggerRef,
+      remeasure,
       reduce,
       slots,
       highlight,
@@ -250,6 +376,7 @@ export function Menu({
       order,
       reduce,
       register,
+      remeasure,
       selectAt,
       setOpen,
       slots,
@@ -875,6 +1002,7 @@ export function MenuContent({
     open,
     setOpen,
     anchor,
+    remeasure,
     reduce,
     slots,
     highlight,
@@ -1010,6 +1138,7 @@ export function MenuContent({
   return (
     <Overlay
       onRequestClose={() => (stack.length > 0 ? back() : setOpen(false))}
+      onShow={remeasure}
     >
       <Animated.View
         style={[StyleSheet.absoluteFill, scrimStyle]}

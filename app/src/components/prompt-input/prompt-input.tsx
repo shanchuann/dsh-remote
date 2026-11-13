@@ -7,6 +7,7 @@ import {
   type TextInputInstance,
   type TextInputProps,
   View,
+  type ViewInstance,
 } from "react-native";
 import Animated, {
   FadeIn,
@@ -274,6 +275,7 @@ export function PromptInput({
   const [inlineHeight, setInlineHeight] = useState(LINE_HEIGHT);
   const [wideHeight, setWideHeight] = useState(LINE_HEIGHT);
   const [menuOpen, setMenuOpen] = useState(false);
+  const surfaceRef = useRef<ViewInstance>(null);
   const lastPrompt = useRef("");
   const turn = useSharedValue(0);
   const plusScale = useSharedValue(1);
@@ -351,6 +353,7 @@ export function PromptInput({
         open={menuOpen}
         onOpenChange={setMenuOpen}
         disableAnimation={disableAnimation}
+        anchorRef={surfaceRef}
       >
         <MenuTrigger
           accessibilityLabel={
@@ -490,12 +493,13 @@ export function PromptInput({
   );
 
   return (
-    <Animated.View
-      layout={reduce || layout === "capsule" ? undefined : GLIDE}
-      onLayout={({ nativeEvent }) => setWidth(nativeEvent.layout.width)}
-      style={[styles.surface, expanded ? styles.card : styles.pill]}
-      className={`${layout === "capsule" ? "bg-transparent" : "bg-surface"} ${disabled ? "opacity-60" : ""} ${className}`}
-    >
+    <View ref={surfaceRef} collapsable={false}>
+      <Animated.View
+        layout={reduce || layout === "capsule" ? undefined : GLIDE}
+        onLayout={({ nativeEvent }) => setWidth(nativeEvent.layout.width)}
+        style={[styles.surface, expanded ? styles.card : styles.pill]}
+        className={`${layout === "capsule" ? "bg-transparent" : "bg-surface"} ${disabled ? "opacity-60" : ""} ${className}`}
+      >
       {attachments.length > 0 ? (
         <View style={styles.attachments}>
           {attachments.map((attachment) => (
@@ -551,7 +555,8 @@ export function PromptInput({
           </Text>
         </View>
       ) : null}
-    </Animated.View>
+      </Animated.View>
+    </View>
   );
 }
 
