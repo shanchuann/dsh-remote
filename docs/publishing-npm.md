@@ -60,7 +60,28 @@ npm publish ./dist/dsh-remote-harness-0.1.16.tgz --access public --registry http
 
 令牌通过本机凭据配置或 CI secret 提供，不写入源码、README、截图或发布日志。认证要求见 [npm 双因素认证说明](https://docs.npmjs.com/configuring-two-factor-authentication/)。
 
-仓库也提供 `.github/workflows/publish-npm.yml`，支持 tag 和手动触发。使用前需在 npm 的 Trusted publishers 配置实际仓库 `shanchuann/dsh-remote` 和工作流 `publish-npm.yml`，并核对该工作流的 npm OIDC 发布环境要求。工作流文件存在不代表 npm 端已经授权；未验证前不要把它当作可用发布凭据。
+## GitHub Actions 可信发布
+
+仓库提供 `.github/workflows/publish-npm.yml`，使用 GitHub 托管的 Ubuntu runner，授予 `id-token: write`，通过 OIDC 向 npm 认证，无需配置长期 npm 发布令牌。工作流使用 Node.js 22 和 npm 11.8.0，满足 npm 对可信发布的最低版本要求。
+
+在 npm 包设置的 Trusted Publisher 中填写：
+
+| 字段 | 值 |
+|---|---|
+| Publisher | GitHub Actions |
+| Label | 自定义说明，例如 `DSH Remote` |
+| Organization or user | `shanchuann` |
+| Repository | `dsh-remote`，末尾不加连字符 |
+| Workflow filename | `publish-npm.yml`，只填文件名 |
+| Environment name | 留空，当前发布 job 未声明 environment |
+
+如果页面提供 Allowed actions，需允许 `npm publish`。仅允许 `npm stage publish` 时，不能使用当前工作流直接发布正式版本。
+
+保存授权不会立即发包。推送与插件版本一致的 `v*` 标签，或在 GitHub Actions 的“Publish to npm”中手动执行，才会先校验仓库元数据、运行插件测试，再发布 `plugin/`。标签必须为 `v<plugin/package.json 中的版本号>`，校验不符时停止发布。每次发布前需提交插件源码、递增版本及正确的 `repository.url`；工作流只会使用 GitHub 上所选提交的文件，不读取本机未提交改动。
+
+`plugin/package.json` 的 `repository.url` 应为 `git+https://github.com/shanchuann/dsh-remote.git`。首次验证必须使用已提交且尚未发布的版本，不能通过重复发布旧版本验证认证。只有实际发布成功才能确认 npm 端授权生效。
+
+配置要求见 [npm 可信发布说明](https://docs.npmjs.com/trusted-publishers/)。
 
 ## 从当前离线包迁移
 
