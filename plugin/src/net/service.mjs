@@ -178,6 +178,7 @@ export class RemoteService {
     /** @type {Map<string, {at:number, settled:boolean, response:object|null, promise:Promise<object>|null}>}
      * sessionId|requestId -> accepted prompt, so a retry never enqueues twice. */
     this.promptRequests = new Map();
+    this.messageOperations = new Map();
     /** @type {Map<string, {running:boolean, active:boolean}>} last known session status */
     this.sessionStates = new Map();
   }
@@ -217,8 +218,7 @@ export class RemoteService {
       dshVersion: host.dshVersion,
       hostId: host.hostId,
       pairingRequired: this.devices.pairingRequired,
-      publicUrl: typeof this.publicUrlProvider === "function" ? this.publicUrlProvider() : null,
-      tunnel: typeof this.tunnelProvider === "function" ? this.tunnelProvider() : null,
+      tailscaleUrl: typeof this.tailscaleUrlProvider === "function" ? this.tailscaleUrlProvider() : null,
       time: this.now()
     };
   }
@@ -232,7 +232,7 @@ export class RemoteService {
       platform: host.platform,
       dshVersion: host.dshVersion,
       pluginVersion: this.pluginVersion,
-      publicUrl: typeof this.publicUrlProvider === "function" ? this.publicUrlProvider() : null
+      tailscaleUrl: typeof this.tailscaleUrlProvider === "function" ? this.tailscaleUrlProvider() : null
     };
   }
 
@@ -248,8 +248,7 @@ export class RemoteService {
       protocol: this.protocolVersion,
       capabilities: host.capabilities,
       defaultCwd: host.defaultCwd,
-      publicUrl: typeof this.publicUrlProvider === "function" ? this.publicUrlProvider() : null,
-      tunnel: typeof this.tunnelProvider === "function" ? this.tunnelProvider() : null,
+      tailscaleUrl: typeof this.tailscaleUrlProvider === "function" ? this.tailscaleUrlProvider() : null,
       devices: this.devicesPayload(deviceId)
     };
   }
@@ -308,6 +307,38 @@ export class RemoteService {
       });
     }
     return { ...result, sessionId: asString(result.sessionId) ?? id };
+  }
+
+  async forkSession(sessionId, body) {
+    const id = requireString(sessionId, 'sessionId', 200);
+    if (!Number.isSafeInteger(body?.atSeq) || body.atSeq < 0) throw apiError('invalid-argument', 'atSeq must be a non-negative safe integer');
+    const requestId = requireString(body?.requestId, 'requestId', 200);
+    const key = JSON.stringify([id, body.atSeq, requestId]);
+    for (const [cachedKey, entry] of this.messageOperations) if (entry.at < this.now() - REQUEST_ID_TTL_MS) this.messageOperations.delete(cachedKey);
+    if (this.messageOperations.has(key)) return this.messageOperations.get(key).promise;
+    if (this.messageOperations.size >= REQUEST_ID_MAX) throw apiError('rate-limited', 'Too many pending message actions');
+    const method = 'forkSession';
+    if (typeof this.bridge?.[method] !== 'function') throw apiError('feature-unavailable', '请更新电脑端 DSH Remote 插件后使用消息分支。');
+    const options = { atSeq: body.atSeq, requestId };
+    const promise = this.#call(() => this.bridge[method](id, options), 'fork session').then(result => {
+      if (typeof result?.sessionId !== 'string' || !result.sessionId) throw apiError('internal', 'Host did not return a branch sessionId');
+      return { sessionId: result.sessionId };
+    });
+    this.messageOperations.set(key, { at: this.now(), promise });
+    promise.catch(() => this.messageOperations.delete(key));
+    return promise;
+  }
+
+  async messageFeedback(sessionId, body) {
+    const id = requireString(sessionId, 'sessionId', 200);
+    if (typeof this.bridge?.messageFeedback !== 'function') throw apiError('feature-unavailable', '请更新电脑端插件后使用消息反馈。');
+    let options;
+    if (body !== undefined) {
+      if (body.rating !== null && body.rating !== 'positive' && body.rating !== 'negative') throw apiError('invalid-argument', 'Invalid feedback rating');
+      if (body.ifVersion !== null && (typeof body.ifVersion !== 'string' || !body.ifVersion)) throw apiError('invalid-argument', 'ifVersion is required');
+      options = { messageId: requireString(body.messageId, 'messageId', 200), rating: body.rating, ifVersion: body.ifVersion };
+    }
+    return this.#call(() => this.bridge.messageFeedback(id, options), 'message feedback');
   }
 
   async history(sessionId, query) {

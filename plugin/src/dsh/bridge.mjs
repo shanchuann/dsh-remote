@@ -168,6 +168,8 @@ export class DshBridge {
         assistantStream: true,
         approvals: this.approvalService !== undefined,
         models: true,
+        messageFork: true,
+        messageFeedback: Boolean(this.ctx.get('messageFeedback')),
         images: true,
         workspaceFiles: Boolean(this.ctx.get('workspaceFiles')),
         workspaceChanges: Boolean(this.ctx.get('workspaceChanges'))
@@ -411,6 +413,16 @@ export class DshBridge {
     const request = { sessionId };
     if (Number.isInteger(input.atSeq)) request.atSeq = input.atSeq;
     return this.controller.fork(request);
+  }
+
+  async messageFeedback(sessionId, body) {
+    const feedback = this.ctx.get('messageFeedback');
+    if (!feedback) throw bridgeError('feature-unavailable', '当前 DSH 未启用消息反馈服务。');
+    const result = body === undefined ? await feedback.list({ sessionId }) : body.rating === null
+      ? await feedback.delete({ sessionId, messageId: body.messageId, ifVersion: body.ifVersion })
+      : await feedback.put({ sessionId, messageId: body.messageId, rating: body.rating, ifVersion: body.ifVersion });
+    if (!result?.ok) throw bridgeError(result?.error?.code === 'version-conflict' ? 'session-unavailable' : 'invalid-argument', '消息反馈未保存：' + (result?.error?.code ?? 'unknown'), result?.error);
+    return result.value;
   }
 
   listApprovals() {

@@ -1,9 +1,9 @@
 /* DSH Remote — Settings → 远程控制 client section.
  *
  * Hand-written bundle in the DSH client module format. It renders the pairing
- * QR/code, LAN + public addresses, and paired devices from the Host route
+ * QR/code, LAN + Tailscale addresses, and paired devices from the Host route
  * GET /dsh-remote/state (same origin as the DSH Web UI). Polls every 4s so a
- * rotated pairing code and tunnel status show up without manual refresh.
+ * rotated pairing code and detected addresses show up without manual refresh.
  */
 window.__ModuleLoader__.load({
   id: "dsh-remote-harness",
@@ -155,7 +155,6 @@ window.__ModuleLoader__.load({
       var now = data.serverTime + (Date.now() - loadedAtRef.current);
       var remaining = Math.max(0, Math.round((data.pairing.expiresAt - now) / 1000));
       var lanQr = qrDataUri(data.qrSvg);
-      var publicRunning = data.tunnel !== null && data.tunnel !== undefined && data.tunnel.running === true;
 
       return h(
         "div",
@@ -182,13 +181,13 @@ window.__ModuleLoader__.load({
                 h(Button, { primary: true, onClick: function () { copyText(data.pairing.code); } }, "复制配对码"),
                 h(Button, { onClick: function () { copyText(data.addresses.length > 0 ? data.addresses[0].url : ""); } }, "复制地址"),
               ),
-              h(Muted, null, "手机扫码即可：二维码同时包含局域网与公网地址，App 会自动选择可达的那个。"),
+              h(Muted, null, "远程访问请先连接 Tailscale。二维码优先使用 Tailscale 地址，局域网作为备用。"),
             ),
           ),
         ),
 
         h(Card, null,
-          h("div", { style: { fontSize: 14, fontWeight: 600 } }, "局域网地址"),
+          h("div", { style: { fontSize: 14, fontWeight: 600 } }, "Host 地址（Tailscale / 局域网）"),
           data.addresses.length === 0
             ? h(Muted, null, "暂无可用网卡地址")
             : data.addresses.map(function (entry) {
@@ -206,29 +205,17 @@ window.__ModuleLoader__.load({
               }),
         ),
 
-        data.publicUrl !== null && data.publicUrl !== undefined
-          ? h(Card, null,
-              h("div", { style: { fontSize: 14, fontWeight: 600 } }, "公网访问 / Cloudflare"),
-              h("div", { style: { display: "flex", gap: 20, flexWrap: "wrap", alignItems: "center" } },
-                h("div", { style: { display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 220 } },
-                  h("a", {
-                    href: data.publicUrl,
-                    target: "_blank",
-                    rel: "noreferrer",
-                    style: { fontFamily: "ui-monospace, Consolas, monospace", fontSize: 13, color: COLORS.primary, wordBreak: "break-all" },
-                  }, data.publicUrl),
-                  h(Muted, null,
-                    "模式：" + (data.tunnel && data.tunnel.mode ? data.tunnel.mode : "static") +
-                    " · 状态：" + (publicRunning ? "运行中" : (data.tunnel && data.tunnel.error ? "错误：" + data.tunnel.error : "未运行")),
-                  ),
-                  h(Muted, null, "公网地址已写入上面的同一个二维码，无需单独扫码。"),
-                ),
-              ),
-            )
-          : h(Card, null,
-              h("div", { style: { fontSize: 14, fontWeight: 600 } }, "公网访问"),
-              h(Muted, null, "未配置 Cloudflare 隧道。在 profile 的 dsh-remote 行 config 下添加 cloudflare: { enabled: true, mode: quick }，重启 DSH 后这里会出现公网地址与二维码。"),
-            ),
+        h(Card, null,
+          h("div", { style: { fontSize: 14, fontWeight: 600 } }, "Tailscale 远程连接"),
+          data.tailscaleUrl
+            ? h("div", null,
+                h("code", null, data.tailscaleUrl),
+                h("div", null, h(Button, { onClick: function () { copyText(data.tailscaleUrl); } }, "复制 Tailscale 地址")),
+                h(Muted, null, "已写入上方二维码。手机与电脑需加入同一 Tailscale 网络，且允许访问此端口。"),
+              )
+            : h(Muted, null, "未检测到 Tailscale IPv4 地址。请在电脑和手机安装并连接 Tailscale，然后刷新；也可手动输入电脑的 Tailscale 地址。"),
+          h(Muted, null, "使用 IP 地址不需要开启 Tailscale DNS。若浏览器能访问而 App 超时，请检查 App 分流是否允许 DSH Remote 使用 Tailscale。"),
+        ),
 
         h(Card, null,
           h("div", { style: { fontSize: 14, fontWeight: 600 } }, "已配对设备（" + data.devices.length + "）"),

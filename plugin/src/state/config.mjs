@@ -49,57 +49,10 @@ function optionalString(value) {
 }
 
 /**
- * Normalize the raw patch config into the runtime shape. Invalid values throw
- * a descriptive error; the caller logs it and disables the plugin instead of
- * crashing the host process.
+ * Normalize the Cordis patch config. Unknown keys (including retired tunnel
+ * settings) are ignored so existing profiles still start after an upgrade.
  * @param {Record<string, unknown>|undefined} raw
- * @returns {{port:number, host:string, pairingTtlMs:number, deviceTtlDays:number,
- *   logLevel:"debug"|"info"|"warn"|"error"|"silent", dshHome:string|undefined,
- *   dataDir:string|undefined}}
  */
-/**
- * Normalize `config.cloudflare`: `true` means a quick tunnel; an object may
- * select `quick` (random trycloudflare.com URL) or `named` (token + hostname).
- * @param {unknown} raw
- * @returns {{enabled:boolean, mode:"quick"|"named", token?:string, hostname?:string, binPath?:string}|null}
- */
-export function normalizeCloudflare(raw) {
-  if (raw === undefined || raw === null || raw === false) return null;
-  if (raw === true) return { enabled: true, mode: "quick" };
-  if (typeof raw !== "object" || Array.isArray(raw)) {
-    throw new Error("dsh-remote: invalid config.cloudflare (expected true or an object)");
-  }
-  const mode = optionalString(raw.mode) ?? "quick";
-  if (mode !== "quick" && mode !== "named") {
-    throw new Error("dsh-remote: config.cloudflare.mode must be \"quick\" or \"named\"");
-  }
-  const token = optionalString(raw.token);
-  const hostname = optionalString(raw.hostname);
-  if (mode === "named") {
-    if (token === undefined) throw new Error("dsh-remote: config.cloudflare.token is required for named mode");
-    if (hostname === undefined) throw new Error("dsh-remote: config.cloudflare.hostname is required for named mode");
-  }
-  return {
-    enabled: raw.enabled !== false,
-    mode,
-    ...(token === undefined ? {} : { token }),
-    ...(hostname === undefined ? {} : { hostname }),
-    ...(optionalString(raw.binPath) === undefined ? {} : { binPath: optionalString(raw.binPath) })
-  };
-}
-
-/** A static external root (Caddy/Cloudflare named tunnel/Nginx), if configured. */
-function parsePublicUrl(value) {
-  const text = optionalString(value);
-  if (text === undefined) return undefined;
-  let parsed;
-  try { parsed = new URL(text); } catch { throw new Error("dsh-remote: invalid config.publicUrl " + JSON.stringify(text)); }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("dsh-remote: config.publicUrl must be http(s)");
-  }
-  return text.replace(/\/+$/, "");
-}
-
 export function normalizeConfig(raw) {
   const source = raw !== null && typeof raw === "object" ? raw : {};
   const host = optionalString(source.host) ?? DEFAULT_CONFIG.host;
@@ -112,9 +65,7 @@ export function normalizeConfig(raw) {
     deviceTtlDays: parsePositive(source.deviceTtlDays, DEFAULT_CONFIG.deviceTtlDays, "deviceTtlDays"),
     logLevel,
     dshHome: optionalString(source.dshHome),
-    dataDir: optionalString(source.dataDir),
-    publicUrl: parsePublicUrl(source.publicUrl),
-    cloudflare: normalizeCloudflare(source.cloudflare)
+    dataDir: optionalString(source.dataDir)
   };
 }
 

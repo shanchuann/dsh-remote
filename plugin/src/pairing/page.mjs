@@ -79,8 +79,8 @@ export function renderPairingPage(input) {
   .card { background: #fff; border: 1px solid #e3e6ea; border-radius: 16px; padding: 24px; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
   .qr { display: flex; justify-content: center; }
   .qr svg { width: 260px; height: 260px; }
-  .public .sub { color: #5b626b; }
-  .public code { word-break: break-all; }
+  .tailscale .sub { color: #5b626b; }
+  .tailscale code { word-break: break-all; }
   .code { margin-top: 12px; text-align: center; }
   .code .label { display: block; font-size: 13px; color: #5b626b; letter-spacing: .08em; text-transform: uppercase; }
   .code strong { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 44px; letter-spacing: .18em; }
@@ -111,7 +111,7 @@ export function renderPairingPage(input) {
 <body>
 <main>
   <h1>DSH Remote</h1>
-  <p class="sub">用手机 App 扫描二维码完成配对（局域网 / 公网自动选择）/ Scan once — the app tries the LAN address, then the public one.</p>
+  <p class="sub">用手机 App 扫码配对；远程访问请先连接 Tailscale。检测到 Tailscale 时优先使用，局域网作为备用。</p>
   <section class="card">
     <div class="qr">${input.qrSvg}</div>
     <div class="code">
@@ -125,18 +125,18 @@ export function renderPairingPage(input) {
     ${locked ? '<p class="lock">尝试次数过多，已临时锁定 / Too many failed attempts. Locked for <span id="lock-countdown">' + escapeHtml(String(lockedSeconds)) + "</span>s.</p>" : ""}
   </section>
 
-  ${input.publicUrl ? '<h2>公网访问 / Public access</h2>' +
-  '<section class="card public">' +
-  '<p class="sub" style="margin:0 0 12px">Cloudflare 隧道 / Tunnel: <code>' + escapeHtml(input.publicUrl) + '</code></p>' +
-  '<p class="tip">mode: ' + escapeHtml(String(input.tunnel?.mode ?? 'static')) +
-  ' · status: ' + escapeHtml(input.tunnel?.running === true ? 'running' : (input.tunnel?.error ? 'error: ' + input.tunnel.error : 'configured')) + '</p>' +
-  '<p class="tip">二维码同时包含局域网与公网地址，手机扫码后会自动选择可达的那个；也可以手动输入二维码下方的地址。</p>' +
-  '</section>' : ''}
+  <h2>Tailscale 远程连接</h2>
+  <section class="card tailscale">
+    ${input.tailscaleUrl
+      ? '<p class="sub" style="margin:0 0 12px">Host 地址：<code>' + escapeHtml(input.tailscaleUrl) + '</code></p><p class="tip">已写入上方二维码。手机与电脑需加入同一 Tailscale 网络，且允许访问此端口。</p>'
+      : '<p class="sub" style="margin:0">未检测到 Tailscale IPv4 地址。请在电脑和手机安装并连接 Tailscale，然后刷新本页；也可手动输入电脑的 Tailscale 地址。</p>'}
+    <p class="tip">直接填写 IP 地址不需要开启 Tailscale DNS。若浏览器能访问而 App 超时，请检查 App 分流是否允许 DSH Remote 使用 Tailscale。</p>
+  </section>
 
   <h2>配对步骤 / How to pair</h2>
   <section class="card">
     <ol class="steps">
-      <li>手机与电脑连接同一个 Wi-Fi，处于同一局域网。</li>
+      <li>手机与电脑都连接 Tailscale；或连接同一个 Wi-Fi 使用局域网。</li>
       <li>用手机 App 扫描上方二维码；也可以手动输入下面的 Host 地址 + 6 位配对码。</li>
       <li>配对成功后，手机即可继续电脑上的 DSH 会话。关闭本页不影响连接。</li>
     </ol>

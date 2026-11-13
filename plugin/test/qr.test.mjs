@@ -60,16 +60,16 @@ test("pairing URI encodes base URL, code, host, and name", () => {
   assert.equal(withoutName.includes("n="), false);
 });
 
-test("one QR carries the LAN URL plus a public alt URL", () => {
+test("one QR can carry a LAN URL plus a Tailscale alt URL", () => {
   const uri = pairingUri({
     baseUrl: "http://192.168.1.23:8790",
-    altUrl: "https://dsh.trycloudflare.com",
+    altUrl: "http://100.80.1.2:8790",
     code: "123456",
     hostId: "host-uuid"
   });
   const parsed = new URL(uri);
   assert.equal(parsed.searchParams.get("u"), "http://192.168.1.23:8790");
-  assert.equal(parsed.searchParams.get("alt"), "https://dsh.trycloudflare.com");
+  assert.equal(parsed.searchParams.get("alt"), "http://100.80.1.2:8790");
 });
 
 test("LAN address discovery skips internal interfaces and prefers private ranges", () => {
@@ -114,7 +114,7 @@ test("writePairingArtifacts writes json/txt/svg/png without credentials", async 
     addresses: ["http://127.0.0.1:8790"],
     pairingCode: "123456",
     pairingExpiresAt: now + 600000,
-    publicUrl: null,
+    tailscaleUrl: null,
     updatedAt: now
   });
   const text = await readFile(paths.pairingTxt, "utf8");

@@ -20,7 +20,6 @@ import {
 } from "../state/config.mjs";
 import { loadHostState } from "../state/host.mjs";
 import { PLUGIN_ROOT, pluginDataPaths, pluginDataPathsIn, resolveDshHome } from "../state/paths.mjs";
-import { CloudflareTunnel } from "./cloudflare.mjs";
 import { createRemoteServer } from "./server.mjs";
 import { RemoteService } from "./service.mjs";
 import { EventHub } from "./sse.mjs";
@@ -61,8 +60,7 @@ export async function createRemoteRuntime(options) {
     bindAddress: config.host,
     artifacts: null,
     timer: null,
-    refreshChain: Promise.resolve(),
-    tunnel: null
+    refreshChain: Promise.resolve()
   };
   let refreshArtifactsHook = null;
 
@@ -103,12 +101,8 @@ export async function createRemoteRuntime(options) {
     }
   }
 
-  function publicUrl() {
-    return config.publicUrl ?? state.tunnel?.snapshot().publicUrl ?? null;
-  }
-
-  function tunnelSnapshot() {
-    return state.tunnel === null ? null : state.tunnel.snapshot();
+  function tailscaleUrl() {
+    return pairingEndpoints(state.port, interfaces).tailscaleUrl;
   }
 
   /** JSON the Settings page polls every few seconds. */
@@ -116,8 +110,7 @@ export async function createRemoteRuntime(options) {
     const snapshot = pairing.snapshot();
     const endpoints = pairingEndpoints(state.port, interfaces);
     const hostName = hostDisplayName();
-    const pub = publicUrl();
-    const uri = pairingUri({ baseUrl: endpoints.baseUrl, altUrl: pub ?? undefined, code: snapshot.code, hostId: hostState.hostId, hostName });
+    const uri = pairingUri({ baseUrl: endpoints.baseUrl, altUrl: endpoints.altUrl, code: snapshot.code, hostId: hostState.hostId, hostName });
     return {
       protocol: PROTOCOL_VERSION,
       pluginVersion,
@@ -126,8 +119,7 @@ export async function createRemoteRuntime(options) {
       port: state.port,
       pairing: { code: snapshot.code, expiresAt: snapshot.expiresAt },
       addresses: endpoints.addresses,
-      publicUrl: pub,
-      tunnel: tunnelSnapshot(),
+      tailscaleUrl: endpoints.tailscaleUrl,
       devices: devices.list().map((device) => ({
         deviceId: device.deviceId,
         name: device.name,
@@ -144,10 +136,9 @@ export async function createRemoteRuntime(options) {
     const snapshot = pairing.snapshot();
     const endpoints = pairingEndpoints(state.port, interfaces);
     const hostName = hostDisplayName();
-    const publicBase = publicUrl();
     const uri = pairingUri({
       baseUrl: endpoints.baseUrl,
-      altUrl: publicBase ?? undefined,
+      altUrl: endpoints.altUrl,
       code: snapshot.code,
       hostId: hostState.hostId,
       hostName
@@ -161,8 +152,7 @@ export async function createRemoteRuntime(options) {
       pairing: snapshot,
       qrSvg: qrSvg(uri, { cellSize: 6, margin: 4, scalable: true }),
       addresses: endpoints.addresses,
-      publicUrl: publicBase,
-      tunnel: tunnelSnapshot(),
+      tailscaleUrl: endpoints.tailscaleUrl,
       devices: devices.list(),
       now: now()
     });
@@ -223,13 +213,9 @@ export async function createRemoteRuntime(options) {
     pairingState() {
       return pairingState();
     },
-    /** External root the phone can reach, if a tunnel/public URL is active. */
-    get publicUrl() {
-      return publicUrl();
-    },
-    /** Cloudflare tunnel facts (null when not configured). */
-    get tunnelStatus() {
-      return tunnelSnapshot();
+    /** Detected Tailscale endpoint; null when no supported adapter is found. */
+    get tailscaleUrl() {
+      return tailscaleUrl();
     },
 
     /** Number of paired phones currently holding an SSE connection. */
@@ -278,17 +264,6 @@ export async function createRemoteRuntime(options) {
         }
       }, PAIRING_REFRESH_MS);
       state.timer.unref?.();
-      if (config.cloudflare !== null) {
-        state.tunnel = new CloudflareTunnel({
-          config: config.cloudflare,
-          port: state.port,
-          logger,
-          onUrlChange: () => {
-            if (refreshArtifactsHook !== null) refreshArtifactsHook();
-          }
-        });
-        await state.tunnel.start();
-      }
       const endpoints = pairingEndpoints(state.port, interfaces);
       const displayUrl = endpoints.addresses[0]?.url ?? "http://127.0.0.1:" + state.port;
       logger.info("dsh remote: " + displayUrl + " (pair code " + pairing.snapshot().code + ")");
@@ -308,7 +283,6 @@ export async function createRemoteRuntime(options) {
         pairing: snapshot,
         now: now(),
         interfaces,
-        publicUrl: publicUrl(),
         deviceCount: devices.size
       });
       state.artifacts = artifacts;
@@ -321,7 +295,7 @@ export async function createRemoteRuntime(options) {
       const endpoints = pairingEndpoints(state.port, interfaces);
       return pairingUri({
         baseUrl: endpoints.baseUrl,
-        altUrl: publicUrl() ?? undefined,
+        altUrl: endpoints.altUrl,
         code: snapshot.code,
         hostId: hostState.hostId,
         hostName: hostDisplayName()
@@ -336,10 +310,6 @@ export async function createRemoteRuntime(options) {
       }
       refreshArtifactsHook = null;
       state.listening = false;
-      if (state.tunnel !== null) {
-        await state.tunnel.stop().catch((error) => logger.warn("dsh remote: stopping cloudflared failed: " + error.message));
-        state.tunnel = null;
-      }
       await state.refreshChain;
       await service.dispose().catch((error) => logger.warn("dsh remote: disposing subscriptions failed: " + error.message));
       hub.stop();
@@ -348,8 +318,7 @@ export async function createRemoteRuntime(options) {
     }
   };
 
-  service.publicUrlProvider = () => runtime.publicUrl;
-  service.tunnelProvider = () => runtime.tunnelStatus;
+  service.tailscaleUrlProvider = () => runtime.tailscaleUrl;
 
   // Settings page data: the client bundle renders the QR/code/devices from
   // this same-origin JSON route (the DSH Settings → 远程控制 section).

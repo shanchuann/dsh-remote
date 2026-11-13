@@ -235,6 +235,18 @@ export function createRemoteServer(options) {
       handler: async ({ params, body }) => ({ body: await service.selectModel(decodeParam(params[0]), body) })
     },
     {
+      method: 'POST', pattern: /^\/v1\/sessions\/([^/]+)\/fork$/, bodyLimit: SMALL_BODY_LIMIT,
+      handler: async ({ params, body }) => ({ body: await service.forkSession(decodeParam(params[0]), body) })
+    },
+    {
+      method: 'GET', pattern: /^\/v1\/sessions\/([^/]+)\/feedback$/,
+      handler: async ({ params }) => ({ body: await service.messageFeedback(decodeParam(params[0])) })
+    },
+    {
+      method: 'POST', pattern: /^\/v1\/sessions\/([^/]+)\/feedback$/, bodyLimit: SMALL_BODY_LIMIT,
+      handler: async ({ params, body }) => ({ body: await service.messageFeedback(decodeParam(params[0]), body) })
+    },
+    {
       method: "GET",
       pattern: /^\/v1\/models$/,
       handler: async () => ({ body: await service.models() })

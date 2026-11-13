@@ -48,22 +48,37 @@ export function lanAddresses(port, interfaces) {
 }
 
 /**
- * Best base URL for the QR payload: first LAN address, else loopback.
+ * Prefer Tailscale for remote use, with a physical LAN adapter as fallback.
  * @param {number} port
  * @param {ReturnType<typeof networkInterfaces>} [interfaces]
- * @returns {{baseUrl: string, addresses: {name: string, address: string, url: string}[]}}
+ * @returns {{baseUrl: string, altUrl: string|undefined, tailscaleUrl: string|null, addresses: {name: string, address: string, url: string}[]}}
  */
 export function pairingEndpoints(port, interfaces) {
   const addresses = lanAddresses(port, interfaces);
   if (addresses.length === 0) {
     addresses.push({ name: "loopback", address: "127.0.0.1", url: "http://127.0.0.1:" + port });
   }
-  return { baseUrl: addresses[0].url, addresses };
+  // Require adapter identity AND the Tailscale IPv4 range: other networks
+  // can use 100.64/10 too. macOS exposes the adapter as utunN.
+  const tailscale = addresses.find((entry) =>
+    /tailscale|^utun\d+$/i.test(entry.name) &&
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(entry.address));
+  const lan = addresses.find((entry) => entry !== tailscale &&
+    !/vmware|virtualbox|vethernet|hyper-?v|docker|wsl|loopback|bluetooth|zerotier|direct|本地连接\s*\*/i.test(entry.name) &&
+    /wi-?fi|wlan|wireless|ethernet|以太网|无线/i.test(entry.name) &&
+    /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(entry.address));
+  const ordered = tailscale ? [tailscale, ...addresses.filter((entry) => entry !== tailscale)] : addresses;
+  return {
+    baseUrl: ordered[0].url,
+    altUrl: tailscale ? lan?.url : undefined,
+    tailscaleUrl: tailscale?.url ?? null,
+    addresses: ordered
+  };
 }
 
 /**
  * Build the dshremote:// pairing URI (protocol section 1.2).
- * @param {{baseUrl: string, code: string, hostId: string, hostName?: string|null}} input
+ * @param {{baseUrl: string, altUrl?: string, code: string, hostId: string, hostName?: string|null}} input
  * @returns {string}
  */
 export function pairingUri(input) {
@@ -72,7 +87,7 @@ export function pairingUri(input) {
   params.set("c", input.code);
   params.set("h", input.hostId);
   if (typeof input.hostName === "string" && input.hostName.length > 0) params.set("n", input.hostName);
-  // One QR for both networks: the app tries `u` (LAN) then `alt` (public).
+  // One QR for both networks: the app tries `u` (Tailscale when available) then `alt` (LAN).
   if (typeof input.altUrl === "string" && input.altUrl.length > 0) params.set("alt", input.altUrl);
   return "dshremote://pair?" + params.toString();
 }
@@ -92,7 +107,7 @@ export function pairingDescriptor(input) {
     addresses: input.addresses.map((entry) => entry.url),
     pairingCode: input.pairing.code,
     pairingExpiresAt: input.pairing.expiresAt,
-    publicUrl: input.publicUrl ?? null,
+    tailscaleUrl: input.tailscaleUrl ?? null,
     updatedAt: input.now
   };
 }
@@ -114,7 +129,7 @@ export function pairingText(input) {
     "URI:       " + input.uri,
     "Protocol:  " + input.protocol,
     "Paired devices: " + input.deviceCount,
-    ...(typeof input.publicUrl === "string" ? ["Public:    " + input.publicUrl] : []),
+    ...(typeof input.tailscaleUrl === "string" ? ["Tailscale: " + input.tailscaleUrl] : []),
     "",
     "Pairing page (host only): http://127.0.0.1:" + input.port + "/pair",
     "Files: pairing.json, pairing.png, pairing.svg",
@@ -135,7 +150,7 @@ export async function writePairingArtifacts(input) {
   const endpoints = pairingEndpoints(input.port, input.interfaces);
   const uri = pairingUri({
     baseUrl: endpoints.baseUrl,
-    altUrl: input.publicUrl,
+    altUrl: endpoints.altUrl,
     code: input.pairing.code,
     hostId: input.hostId,
     hostName: input.hostName
@@ -147,7 +162,7 @@ export async function writePairingArtifacts(input) {
     port: input.port,
     addresses: endpoints.addresses,
     pairing: input.pairing,
-    publicUrl: input.publicUrl,
+    tailscaleUrl: endpoints.tailscaleUrl,
     now
   });
   const svg = qrSvg(uri, { cellSize: 6, margin: 4, scalable: true });
@@ -164,7 +179,7 @@ export async function writePairingArtifacts(input) {
         addresses: endpoints.addresses,
         pairing: input.pairing,
         uri,
-        publicUrl: input.publicUrl,
+        tailscaleUrl: endpoints.tailscaleUrl,
         deviceCount: input.deviceCount ?? 0,
         now
       })
